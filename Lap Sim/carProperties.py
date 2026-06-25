@@ -42,19 +42,3 @@ class Car:
     # ── Constants ─────────────────────────────────────────────
     air_density:        float = 1.225   # kg/m³
     g:                  float = 9.81    # m/s²
-
-
-# ── Quick sanity check ────────────────────────────────────────
-if __name__ == "__main__":
-    car = Car()
-
-    mass_total = car.mass_sprung + car.mass_unsprung + car.mass_driver
-
-    print(f"Total mass     : {mass_total:.1f} kg")
-    print(f"Weight         : {mass_total * car.g:.0f} N")
-    print(f"Front bias     : {car.front_bias*100:.0f} %")
-    print(f"Drivetrain     : {car.drivetrain}")
-    print(f"Peak power     : {car.peak_power/1000:.0f} kW")
-    print(f"Peak torque    : {car.peak_torque_wheel:.0f} Nm at wheels")
-    print(f"CL / CD        : {car.CL} / {car.CD}")
-    print(f"mu lat / long  : {car.mu_lat} / {car.mu_long}")
