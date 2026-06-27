@@ -1,45 +1,24 @@
 # Author : Anne-Sophie Nadeau
 # Summary : Convert a Matlab file exported from Motec to a track map
 
-import scipy.io as mat
 import numpy as np
 from scipy.interpolate import splprep, splev
 from scipy.signal import find_peaks
 
+
 class TrackMap:
-    # Summary : load the matlab file and keep the 4 track channels
-    # Input   : filepath, path to the .mat file (str)
-    # Output  : none, fills self.data with lon, lat, a_lat, speed
-    def __init__(self, filepath):
-        # load the matlab file
-        raw = mat.loadmat(filepath, squeeze_me=True, struct_as_record=False)
+    def __init__(self, motec):
+        self.lat = motec.getValue("GPS_Latitude")   # GPS latitude  [deg]
+        self.lon = motec.getValue("GPS_Longitude")   # GPS longitude [deg]
 
-        # pick out the 4 channels we need, in any order
-        self.data = {}
-        for name, obj in raw.items():
-            if name.startswith('__'):
-                continue
-            value = np.ravel(obj.Value)
-            name = name.lower()
-            if 'lon' in name:
-                self.data['lon'] = value        # GPS longitude [deg]
-            elif 'lat' in name:
-                self.data['lat'] = value        # GPS latitude  [deg]
-
-    # Summary : build the track for the chosen event
-    # Input   : event (autocross, endurance, accel, skidpad), n_apex, ds step [m], smooth value, endurance distance [m], accel length [m], skidpad radius [m]
-    # Output  : self, with x, y, s, ds, k, n_laps, lap_length, event
-    def createTrack(self, event="autocross",n_apex=10, ds=0.25, endurance_distance=22000.0, accel_length=75.0, skidpad_radius=9.125):
+    def createTrack(self, event="autocross", n_apex=10, ds=0.25, endurance_distance=22000.0, accel_length=75.0, skidpad_radius=9.125):
         event = event.lower()
 
         # autocross and endurance both use the real GPS track
-        if event == "autocross" or event == "endurance":
-            x, y, s, k = self.build_from_gps(ds)
+        if event in ("autocross", "endurance"):
+            x, y, s, k = self.buildFromGPS(ds)
             lap_length = s[-1]
-            if event == "endurance":
-                n_laps = round(endurance_distance / lap_length)
-            else:
-                n_laps = 1
+            n_laps = round(endurance_distance / lap_length) if event == "endurance" else 1
 
         # accel is just a straight line, no GPS
         elif event == "accel":
@@ -47,38 +26,26 @@ class TrackMap:
             x = s.copy()
             y = np.zeros(len(s))
             k = np.zeros(len(s))                      # straight, so no curvature
-            lap_length = accel_length
-            n_laps = 1
+            lap_length, n_laps = accel_length, 1
 
         # skidpad is two circles (figure 8)
         elif event == "skidpad":
-            x, y, s, k = self.figure_eight(skidpad_radius, ds)
-            lap_length = s[-1]
-            n_laps = 1
+            x, y, s, k = self.figureEight(skidpad_radius, ds)
+            lap_length, n_laps = s[-1], 1
 
         # save the results so we can use track.x, track.y, track.s, track.ds, track.k
-        self.x = x
-        self.y = y
-        self.s = s
-        self.ds = ds
-        self.k = k
-        self.apex = self.find_apexes(n_apex)   # auto-tunes min_peak to hit n_apex
+        self.x, self.y, self.s, self.ds, self.k = x, y, s, ds, k
+        self.apex = self.findApexes(n_apex)   # auto-tunes min_peak to hit n_apex
         self.n_laps = n_laps
         self.lap_length = lap_length
         self.event = event
         return self
 
-    # Summary : turn GPS into a smooth track and find its curvature
-    # Input   : ds step [m], smooth value (0 heavy, 1 light)
-    # Output  : x [m], y [m], s distance [m], k curvature [1/m]
-    def build_from_gps(self, ds, smooth_m=0.5):
-        lat = self.data['lat']
-        lon = self.data['lon']
-
+    def buildFromGPS(self, ds, smooth_m=0.5):
         # Step 1: turn GPS into x, y in meters (origin = first point)
         R = 6371000.0
-        x = R * np.deg2rad(lat - lat[0])
-        y = R * np.cos(np.deg2rad(lat[0])) * np.deg2rad(lon - lon[0])
+        x = R * np.deg2rad(self.lat - self.lat[0])
+        y = R * np.cos(np.deg2rad(self.lat[0])) * np.deg2rad(self.lon - self.lon[0])
 
         # Step 2: close the data so the fit makes a loop
         x = np.append(x, x[0])
@@ -90,14 +57,11 @@ class TrackMap:
 
         # Step 4: drop repeated GPS points so distance always increases
         moved = np.append(True, np.diff(cumdist) > 0)
-        cumdist = cumdist[moved]
-        x = x[moved]
-        y = y[moved]
+        cumdist, x, y = cumdist[moved], x[moved], y[moved]
 
         # Step 5: periodic smoothing spline, closes the loop with no kink
         # smooth_m is the allowed deviation in meters, higher = smoother
-        s_factor = len(x) * smooth_m**2
-        tck, u = splprep([x, y], u=cumdist, s=s_factor, per=1)
+        tck, u = splprep([x, y], u=cumdist, s=len(x) * smooth_m**2, per=1)
 
         # Step 6: read the smooth track on an even distance grid
         s = np.arange(0, cumdist[-1], ds)
@@ -115,11 +79,8 @@ class TrackMap:
         k = np.append(k, k[0])
 
         return x, y, s, k
-    
-    # Summary : build the skidpad figure 8 from two circles
-    # Input   : R circle radius [m], ds step [m]
-    # Output  : x [m], y [m], s distance [m], k curvature [1/m]
-    def figure_eight(self, R, ds):
+
+    def figureEight(self, R, ds):
         # angle steps so the spacing along the circle is ds
         angle = np.arange(0, 2*np.pi, ds / R)
 
@@ -139,12 +100,8 @@ class TrackMap:
         k = np.append(-np.ones(len(x1)), np.ones(len(x2))) / R
 
         return x, y, s, k
-    
-    # Summary : find exactly n_apex apexes by auto-tuning min_peak
-    # Input   : n_apex, how many apexes the real track has
-    # Output  : list of apex indices into x, y, s, k
-    def find_apexes(self, n_apex):
 
+    def findApexes(self, n_apex):
         # all local maxima of |curvature| (every possible apex)
         peaks = find_peaks(np.abs(self.k))[0]
         heights = np.abs(self.k)[peaks]
