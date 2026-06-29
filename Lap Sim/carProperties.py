@@ -41,6 +41,7 @@ class MFE27:
     mu_lat:             float = 1.50    # peak lateral friction coefficient
     mu_long:            float = 1.45    # peak longitudinal friction coefficient
     tire_radius:        float = 0.2032  # m  loaded radius
+    Crr:                float = 0.015   # rolling resistance coefficient
 
     # ── Suspension ────────────────────────────────────────────
     RC_height_front:         float = 0.0866   # m  front roll center height
@@ -60,17 +61,18 @@ class MFE27:
     def CLA(self): # downforce coefficient (positive = down)
         return self.CL * self.ref_area
     
+    @property
     def CDA(self):
         return self.CD * self.ref_area
 
 
     # ── Powertrain ────────────────────────────────────────────
     peak_power:            float = 80_000  # W   total system peak power
-    motor_torque:          float = 1        # Nm  at motor
+    peak_motor_torque:     float = 15        # Nm  at motor
     torque_split:          float = 0.50    # fraction of torque to front (AWD)
     motor_efficiency:      float = 0.90    # fraction of power delivered to wheels
     inverter_efficiency:   float = 0.95    # fraction of power delivered to motor
-    motor_rpm_max:         float = 20_000  # rpm  max motor speed
+    motor_rpm_max:         float = 18_000  # rpm  max motor speed
 
     drivetrain:            str   = "AWD"   # "AWD"  "RWD"  "FWD"
     gear_ratio:            float = 13.39     # final drive ratio
