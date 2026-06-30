@@ -4,7 +4,6 @@
 #          distance, and elapsed time at each step.
 
 from dataclasses import dataclass
-import carProperties
 import physics as ph
 
 @dataclass
@@ -12,7 +11,7 @@ class AccelSolver():
     track_length:  float = 75.0  # m  length of acceleration event
     run_up:        float = 0.3  # m  distance before start line where car starts moving
     v0:            float = 0.0  # m/s  initial speed
-    dt:            float = 0.01  # s  time step for simulation
+    dt:            float = 0.001  # s  time step for simulation
     
     def simulate(self, car):
         v_max = ph.rpm_to_speed(car,car.motor_rpm_max) 
@@ -32,6 +31,7 @@ class AccelSolver():
         downforce_list = []
         rolling_resistance_list = []
         propulsion_power_list = []
+        motor_torque_list = []
         motor_power_list = []
         rpm_list = []
         traction_limit_long_list = []
@@ -47,6 +47,8 @@ class AccelSolver():
 
             # Calculate propulsive force (N)
             Fx = ph.propulsive_force(car, v, N) - ph.drag(car, v) - ph.rolling_resistance(car, N)
+            
+            motor_torque = ph.propulsive_force(car, v, N) * car.tire_radius / (car.gear_ratio)
 
             # Calculate acceleration (m/s²)
             Ax = Fx / car.mass_total
@@ -68,7 +70,8 @@ class AccelSolver():
             downforce_list.append(ph.downforce(car, v))
             rolling_resistance_list.append(ph.rolling_resistance(car, N))
             propulsion_power_list.append(Fx * v / 1000)  # kW
-            motor_power_list.append(car.peak_motor_torque * ph.speed_to_rpm(car, v) * 2 * 3.14159 / 60 / 1000)  
+            motor_torque_list.append(motor_torque)
+            motor_power_list.append(motor_torque * ph.speed_to_rpm(car, v) * 2 * 3.14159 / 60 / 1000)  
             rpm_list.append(ph.speed_to_rpm(car, v))
             traction_limit_long_list.append(ph.traction_limit_long(car, N))
             torque_limited_list.append(ph.F_torque_limited(car))
@@ -84,6 +87,7 @@ class AccelSolver():
             'downforce':      downforce_list,
             'rr':             rolling_resistance_list,
             'propulsion_power': propulsion_power_list,
+            'motor_torque':   motor_torque_list,
             'motor_power':    motor_power_list,
             'rpm':            rpm_list,
             'traction_limit': traction_limit_long_list,

@@ -26,9 +26,9 @@ def plot_multi(x_key, y_keys, labels=None, xlabel=None, ylabel=None, title=None)
     plt.figure()
     for i, y_key in enumerate(y_keys):
         label = labels[i] if labels else y_key
-        plt.plot(results[x_key], results[y_key], label=label)
+        plt.plot(results[x_key], results[y_keys[i]], label=label)
     plt.xlabel(xlabel or x_key)
-    plt.ylabel(ylabel or y_key)
+    plt.ylabel(ylabel or "")
     plt.title(title or "")
     plt.legend()
     plt.grid(True)
@@ -38,6 +38,8 @@ def plot_multi(x_key, y_keys, labels=None, xlabel=None, ylabel=None, title=None)
 print(results['time'][-1])
 
 plot("time", "distance", "Time (s)", "Distance (m)", "Distance vs Time")
+
+plot("distance", "motor_torque", "Distance (m)", "Motor Torque (Nm)", "Motor Torque vs Distance")
 
 # Speed vs Distance
 plot('distance', 'speed', 'Distance (m)', 'Speed (m/s)', 'Speed vs Distance')
@@ -59,5 +61,9 @@ plot('distance', 'rpm', 'Distance (m)', 'Motor RPM', 'RPM vs Distance')
 
 # Motor Power vs Distance
 plot('distance', 'motor_power', 'Distance (m)', 'Motor Power (kW)', 'Motor Power vs Distance')
+
+plot_multi('distance', ['traction_limit', 'torque_limit', 'power_limit'],
+           labels=['Traction Limit', 'Torque Limited', 'Power Limited'])
+plt.ylim(0, 10000)
 
 plt.show()

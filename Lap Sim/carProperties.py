@@ -68,7 +68,7 @@ class MFE27:
 
     # ── Powertrain ────────────────────────────────────────────
     peak_power:            float = 80_000  # W   total system peak power
-    peak_motor_torque:     float = 15        # Nm  at motor
+    peak_motor_torque:     float = 9        # Nm  at motor
     torque_split:          float = 0.50    # fraction of torque to front (AWD)
     motor_efficiency:      float = 0.90    # fraction of power delivered to wheels
     inverter_efficiency:   float = 0.95    # fraction of power delivered to motor
