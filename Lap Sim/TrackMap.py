@@ -8,6 +8,7 @@ from scipy.signal import find_peaks
 
 class TrackMap:
     def __init__(self, motec):
+        # Put the name use in motec
         self.lat = motec.getValue("GPS_Latitude")   # GPS latitude  [deg]
         self.lon = motec.getValue("GPS_Longitude")   # GPS longitude [deg]
 
