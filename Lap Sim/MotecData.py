@@ -5,29 +5,15 @@
 import scipy.io as sio
 
 class MotecData:
-
     def __init__(self, file_path):
-
-        self.mat = sio.loadmat(
-            file_path,
-            struct_as_record=False,
-            squeeze_me=True
-        )
-
+        self.mat = sio.loadmat(file_path, struct_as_record=False, squeeze_me=True)
         self.channels = {}
 
         for name, obj in self.mat.items():
-
             if name.startswith("__"):
                 continue
-
             if hasattr(obj, "_fieldnames"):
-
-                self.channels[name] = {
-                    "time": obj.Time,
-                    "value": obj.Value,
-                    "units": obj.Units
-                }
+                self.channels[name] = {"time": obj.Time, "value": obj.Value, "units": obj.Units}
 
     def getValue(self, channel):
         return self.channels[channel]["value"]
