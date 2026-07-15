@@ -2,14 +2,16 @@
 # Summary: This script is used to define the properties of the car used as inputs in the Lap Sim.
 
 from dataclasses import dataclass #Dataclasses allows us to sweep through paramters easily
+from scipy.io import loadmat
+import numpy as np
 
 @dataclass
 class MFE27:
 
     # ── Geometry ──────────────────────────────────────────────
     wheelbase:          float = 1.525   # m
-    track_front:        float = 1.150   # m
-    track_rear:         float = 1.150   # m
+    track:              float = 1.150   # m
+    lltd:               float = 0.474   # m  lateral load transfer distribution (front)
     CG_height:          float = 0.286   # m
     CGx:                float = 0.44    # fraction of total weight on front axle
 
@@ -41,15 +43,13 @@ class MFE27:
     mu_lat:             float = 1.50    # peak lateral friction coefficient
     mu_long:            float = 1.45    # peak longitudinal friction coefficient
     tire_radius:        float = 0.2032  # m  loaded radius
-    Crr:                float = 0.015   # rolling resistance coefficient
+    tire_pressure:      float = 13      # psi tire pressure cold
+    Re0:                float = 0.2023  # m  effective rolling radius
 
     # ── Suspension ────────────────────────────────────────────
     RC_height_front:         float = 0.0866   # m  front roll center height
     RC_height_rear:          float = 0.13437  # m  rear roll center height
     RC_height_sprung:        float = 0.1100   # m  sprung roll center height
-
-
-
 
     # ── Aero ──────────────────────────────────────────────────
     CL:                 float = 4.26    # downforce coefficient (positive = down)
@@ -67,19 +67,29 @@ class MFE27:
 
 
     # ── Powertrain ────────────────────────────────────────────
-    peak_power:            float = 80_000  # W   total system peak power
+    max_power:            float = 80_000  # W   total system peak power
     peak_motor_torque:     float = 9        # Nm  at motor
     torque_split:          float = 0.50    # fraction of torque to front (AWD)
-    motor_efficiency:      float = 0.90    # fraction of power delivered to wheels
-    inverter_efficiency:   float = 0.95    # fraction of power delivered to motor
+    inverter_efficiency:   float = 0.98    # fraction of power delivered to motor
     motor_rpm_max:         float = 18_000  # rpm  max motor speed
 
     drivetrain:            str   = "AWD"   # "AWD"  "RWD"  "FWD"
     gear_ratio:            float = 13.39     # final drive ratio
-    torque_front_bias:     float = 0.50 
     regen:                 bool = True      # True if regen braking is enabled
     regen_torque:          float = 1        # Nm  at motor
+    
+    def __post_init__(self):
+        # motor efficiency map, 2D
+        m = loadmat("motor_efficiency.mat")
+        self.eta_torque = np.squeeze(m["Torque"]).astype(float)      # (12,)   [Nm]
+        self.eta_rpm    = np.squeeze(m["RPM"]).astype(float)         # (11,)   [rpm]
+        self.eta_map    = np.asarray(m["Efficiency"], dtype=float)   # (12,11) rows=torque, cols=rpm
+        
 
+        # motor torque envelope, 1D
+        c = loadmat("motor_curve.mat")
+        self.curve_rpm    = np.squeeze(c["RPM"]).astype(float)       # (11,)   [rpm]
+        self.curve_torque = np.squeeze(c["Tmotor"]).astype(float)    # (11,)   [Nm]
 
     # ── Brakes ────────────────────────────────────────────────
     max_decel:          float = 18.0    # m/s²  peak braking deceleration
