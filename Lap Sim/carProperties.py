@@ -4,6 +4,10 @@
 from dataclasses import dataclass #Dataclasses allows us to sweep through paramters easily
 from scipy.io import loadmat
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator
+from pathlib import Path
+
+DATA = Path(__file__).parent / "Powertrain_mat"
 
 @dataclass
 class MFE27:
@@ -44,7 +48,6 @@ class MFE27:
     mu_long:            float = 1.45    # peak longitudinal friction coefficient
     tire_radius:        float = 0.2032  # m  loaded radius
     tire_pressure:      float = 13      # psi tire pressure cold
-    Re0:                float = 0.2023  # m  effective rolling radius
 
     # ── Suspension ────────────────────────────────────────────
     RC_height_front:         float = 0.0866   # m  front roll center height
@@ -80,14 +83,14 @@ class MFE27:
     
     def __post_init__(self):
         # motor efficiency map, 2D
-        m = loadmat("motor_efficiency.mat")
+        m = loadmat(DATA / "AMK_Efficiency.mat")
         self.eta_torque = np.squeeze(m["Torque"]).astype(float)      # (12,)   [Nm]
         self.eta_rpm    = np.squeeze(m["RPM"]).astype(float)         # (11,)   [rpm]
         self.eta_map    = np.asarray(m["Efficiency"], dtype=float)   # (12,11) rows=torque, cols=rpm
-        
+        self.eta_interp = RegularGridInterpolator((self.eta_torque, self.eta_rpm), self.eta_map, method="linear")
 
         # motor torque envelope, 1D
-        c = loadmat("motor_curve.mat")
+        c = loadmat(DATA / "AMK_MotorCurve.mat")
         self.curve_rpm    = np.squeeze(c["RPM"]).astype(float)       # (11,)   [rpm]
         self.curve_torque = np.squeeze(c["Tmotor"]).astype(float)    # (11,)   [Nm]
 

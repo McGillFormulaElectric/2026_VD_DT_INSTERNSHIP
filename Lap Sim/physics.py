@@ -5,6 +5,7 @@
 #          Import this module into your solver and call functions by name.
 
 import numpy as np
+from scipy.interpolate import interpn
 
 # ── Tires ──────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ def rear_long_LT(long_LT_total):
 
 def LLT_total(car, Ay):
     """Returns the lateral load transfer (N) at a given acceleration (m/s^2)"""
-    return car.mass_total * Ay * car.CG_height / car.track_front
+    return car.mass_total * Ay * car.CG_height / car.track
 
 def FR_LLT(LLT_total, LLTD):
     """Returns the front right vertical load transfer (N) at a given total lateral load transfer (N)"""
@@ -81,15 +82,17 @@ def drag(car, v):
 # ── PowerTrain ──────────────────────────────────────────────────
 
 def motor_eff(car, rpm, torque):
-    """Motor efficiency, 0 to 1. Clamped to the map, never extrapolated."""
-    T = np.clip(torque, car.eta_torque[0], car.eta_torque[-1])
-    N = np.clip(rpm,    car.eta_rpm[0],    car.eta_rpm[-1])
-    return float(car._eta((T, N)))
-
-def pack_power(car, torques, rpm):
+    """Returns motor efficiency (0 to 1) at a given torque (Nm) and speed (rpm),
+    bilinearly interpolated from the map. Clamped to the map edges."""
+    T = min(max(abs(torque), car.eta_torque[0]), car.eta_torque[-1])
+    N = min(max(rpm, car.eta_rpm[0]), car.eta_rpm[-1])
+    return float(interpn((car.eta_torque, car.eta_rpm), car.eta_map, [[T, N]])[0])
+    
+    
+def pack_power(car, torques, etas, rpm):
     """Returns the battery pack power (W) drawn by a list of motor torques (Nm) at a given motor speed (rpm)"""
     omega = rpm * 2 * np.pi / 60
-    return sum(T * omega / (motor_eff(car, rpm, T) * car.inverter_efficiency) for T in torques)
+    return sum(T * omega / (eta * car.inverter_efficiency) for T, eta in zip(torques, etas))
 
 def motor_rpm(car, Vx):
     """Returns the motor speed (rpm) at a given vehicle speed (m/s)"""

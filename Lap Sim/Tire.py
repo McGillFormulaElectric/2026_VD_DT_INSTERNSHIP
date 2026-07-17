@@ -19,6 +19,7 @@ class Tire:
         self.Fz0 = self.coefficient["Fz0"]         # Fz0, nominal load the fit is referenced to [N]
         self.muxScale = muxScale
         self.muyScale = muyScale
+        self._build_grip_table()
 
     # Magic Formula (manual sec 1.2, 1.3):
     #   F = D*sin(C*atan(B*x - E*(B*x - atan(B*x)))) + SV
@@ -59,3 +60,24 @@ class Tire:
         kappa = np.linspace(0, 0.3, 200)            # sweep slip, take the max: peak = the capacity the sim uses
         alpha = np.linspace(0, 0.3, 200)
         return (np.max(np.abs(self.Fx(Fz, kappa, camber))), np.max(np.abs(self.Fx(Fz, -kappa, camber))), np.max(np.abs(self.Fy(Fz, alpha, camber))))   # drive +kappa, brake -kappa
+    
+    def _build_grip_table(self, Fz_max=2500.0, n=80):
+        """Precompute peak drive/brake/lateral vs Fz, once. The solver then
+        interpolates instead of sweeping slip on every call."""
+        k = np.linspace(0, 0.20, 20)
+        a = np.linspace(0, 0.30, 20)
+        self._Fz_grid = np.linspace(0.0, Fz_max, n)
+        drive, brake, lat = [], [], []
+        for f in self._Fz_grid:
+            drive.append(np.max(np.abs(self.Fx(f,  k))))
+            brake.append(np.max(np.abs(self.Fx(f, -k))))
+            lat.append(  np.max(np.abs(self.Fy(f,  a))))
+        self._drive = np.array(drive)
+        self._brake = np.array(brake)
+        self._lat   = np.array(lat)
+    
+    def peak(self, Fz, camber=0.0):
+        """"Peak (drive, brake, lateral) [N], interpolated from the precomputed table."""
+        return (float(np.interp(Fz, self._Fz_grid, self._drive)),
+                float(np.interp(Fz, self._Fz_grid, self._brake)),
+                float(np.interp(Fz, self._Fz_grid, self._lat)))
