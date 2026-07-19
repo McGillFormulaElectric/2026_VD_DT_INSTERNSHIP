@@ -39,30 +39,84 @@ x_roll    = [r["roll_deg"]           for r in roll]      # deg
 
 # value extractors:  y(results, key)  /  y(results, key, side or axle)
 def y(rows, key, *path):
+    """
+    Extract one metric from every sweep row into a flat list (a y-axis
+    column for plotting).
+
+    Sweeps return lists of nested dicts, and how deep a metric sits
+    varies: heave/steer rows are one axle ("camber" lives under "L" or
+    "R"), roll rows hold both axles ("camber" lives under "front" ->
+    "L"), and some metrics sit at the top level ("rc_height", no path).
+    This helper walks an arbitrary chain of keys down to the right
+    sub-dict, then grabs the metric.
+
+    Args:
+        rows (list of dict): output of a sweep (heave_f, steer, roll...).
+        key (str): the metric to extract, e.g. "camber", "rc_height".
+        *path: zero or more dict keys to descend through first, in
+            order, e.g. ("L",) or ("front", "L").
+
+    Returns:
+        list: the metric's value from each row, in row order.
+
+    Examples:
+        y(heave_f, "rc_height")            # r["rc_height"]
+        y(heave_f, "camber", "L")          # r["L"]["camber"]
+        y(roll,    "camber", "front", "L") # r["front"]["L"]["camber"]
+    """
     out = []
     for r in rows:
-        v = r
+        v = r                    # start at the top of this row's dict
         for p in path:
-            v = v[p]
-        out.append(v[key])
+            v = v[p]             # descend one level per path key
+        out.append(v[key])       # grab the metric at the final level
     return out
 
 # ════════════════════════ 2. PLOT HELPER ═══════════════════════════
 
 def kplot(title, xlabel, ylabel, series):
-    """series = list of (label, x, y). One figure per call."""
-    fig, ax = plt.subplots(figsize=(8, 5))
+    """
+    Create one standardized kinematics figure with any number of curves.
+
+    Wraps the repetitive matplotlib boilerplate (figure creation, axis
+    labels, zero reference lines, grid, legend) so every graph in the
+    script is a single call and all figures share the same styling.
+
+    Args:
+        title (str): figure title.
+        xlabel (str): x-axis label, e.g. "Wheel travel (mm)".
+        ylabel (str): y-axis label, e.g. "deg".
+        series (list of tuple): one (label, x, y) triple per curve —
+            label (str) for the legend, x and y as equal-length
+            sequences. All curves share the axes.
+
+    Returns:
+        None: the figure is created and styled but not shown; the
+        script calls plt.show() once at the end to display all figures.
+    """
+    # New figure + one axes per call (so each graph is its own window)
+    fig, ax = plt.subplots(figsize=(8, 5))    # size in inches (w, h)
     fig.suptitle(title, fontweight="bold")
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.axhline(0, color="gray", linewidth=0.7, linestyle="--")
-    ax.axvline(0, color="gray", linewidth=0.7, linestyle="--")
+
+    # Dashed zero reference lines: kinematics curves are read relative
+    # to zero (static pose / neutral setting), so mark both axes
+    ax.axhline(0, color="gray", linewidth=0.7, linestyle="--")   # y = 0
+    ax.axvline(0, color="gray", linewidth=0.7, linestyle="--")   # x = 0
+
+    # Grid on both major and minor ticks, faint (alpha = transparency)
     ax.grid(True, which="both", alpha=0.3)
-    ax.minorticks_on()
+    ax.minorticks_on()      # enable minor ticks so "both" has effect
+
+    # Plot every curve; tuple-unpack each (label, x, y) triple.
+    # No explicit colors: matplotlib cycles its defaults, so curves
+    # in one figure are automatically distinct.
     for label, xs, ys in series:
         ax.plot(xs, ys, label=label)
-    ax.legend()
-    plt.tight_layout()
+
+    ax.legend()             # built from the label= kwargs above
+    plt.tight_layout()      # fix margins so labels don't clip
 
 # ═══════════ 3. THE PLOTS — comment out what you don't need ════════
 
