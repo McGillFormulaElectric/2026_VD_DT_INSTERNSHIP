@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-from CarProperties import MFE27
+from carProperties import MFE27
 from Tire import Tire
 from Acceleration import AccelSolver
 from SkidPad import SkidPadSolver

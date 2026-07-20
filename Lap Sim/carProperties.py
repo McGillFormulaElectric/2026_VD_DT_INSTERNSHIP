@@ -37,17 +37,18 @@ class MFE27:
     
     @property
     def mass_sprung_front(self):  # kg  (chassis + aero + battery)
-        return self.mass_sprung * self.CGx_front_bias
+        return self.mass_sprung * self.CGx
     
     @property
     def mass_sprung_rear(self):  # kg  (chassis + aero + battery)
-        return self.mass_sprung * (1-self.CGx_front_bias)
+        return self.mass_sprung * (1-self.CGx)
 
     # ── Tires ──────────────────────────────────────────────────
-    mu_lat:             float = 1.50    # peak lateral friction coefficient
-    mu_long:            float = 1.45    # peak longitudinal friction coefficient
+    
+    camber_front:       float = 0    # deg  front camber angle
+    camber_rear:        float = 0    # deg  rear camber angle
     tire_radius:        float = 0.2032  # m  loaded radius
-    tire_pressure:      float = 13      # psi tire pressure cold
+    tire_pressure:      float = 13      # psi tire pressure hot
 
     # ── Suspension ────────────────────────────────────────────
     RC_height_front:         float = 0.0866   # m  front roll center height
@@ -59,6 +60,7 @@ class MFE27:
     CD:                 float = 1.77    # drag coefficient
     ref_area:           float = 1.10    # m²  frontal reference area
     aero_balance:       float = 0.45    # fraction of downforce on front axle
+    cop_z:              float = 0.30    # m  center of pressure height
 
     @property
     def CLA(self): # downforce coefficient (positive = down)
@@ -70,29 +72,30 @@ class MFE27:
 
 
     # ── Powertrain ────────────────────────────────────────────
-    max_power:            float = 80_000  # W   total system peak power
-    peak_motor_torque:     float = 9        # Nm  at motor
+    motor_type:            str   = "AMK"   # "AMK" or "Fisher"
+    power_cap:             float = 80_000  # W   total system peak power
+    torque_cap:            float = 9        # torque cap of motor [Nm]
     torque_split:          float = 0.50    # fraction of torque to front (AWD)
     inverter_efficiency:   float = 0.98    # fraction of power delivered to motor
-    motor_rpm_max:         float = 18_000  # rpm  max motor speed
+    rpm_cap:               float = 18_000  # rpm  cap of the motor 
 
-    drivetrain:            str   = "AWD"   # "AWD"  "RWD"  "FWD"
+    drivetrain:            str   = "AWD"    # "AWD"  "RWD"  "FWD"
     gear_ratio:            float = 13.39     # final drive ratio
     regen:                 bool = True      # True if regen braking is enabled
     regen_torque:          float = 1        # Nm  at motor
     
     def __post_init__(self):
         # motor efficiency map, 2D
-        m = loadmat(DATA / "AMK_Efficiency.mat")
+        m = loadmat(DATA/ self.motor_type / (self.motor_type + "_Efficiency.mat"))
         self.eta_torque = np.squeeze(m["Torque"]).astype(float)      # (12,)   [Nm]
         self.eta_rpm    = np.squeeze(m["RPM"]).astype(float)         # (11,)   [rpm]
         self.eta_map    = np.asarray(m["Efficiency"], dtype=float)   # (12,11) rows=torque, cols=rpm
-        self.eta_interp = RegularGridInterpolator((self.eta_torque, self.eta_rpm), self.eta_map, method="linear")
+        self.eta_interp = RegularGridInterpolator((self.eta_torque, self.eta_rpm), self.eta_map, method="linear") #Might have to add a clipping function to not interpolate out of range and crash
 
         # motor torque envelope, 1D
-        c = loadmat(DATA / "AMK_MotorCurve.mat")
+        c = loadmat(DATA/ self.motor_type / (self.motor_type + "_MotorCurve.mat"))
         self.curve_rpm    = np.squeeze(c["RPM"]).astype(float)       # (11,)   [rpm]
-        self.curve_torque = np.squeeze(c["Tmotor"]).astype(float)    # (11,)   [Nm]
+        self.curve_torque = np.squeeze(c["Tmotor"]).astype(float)    # (11,)   [Nm] 
 
     # ── Brakes ────────────────────────────────────────────────
     max_decel:          float = 18.0    # m/s²  peak braking deceleration

@@ -3,7 +3,7 @@
 #           each returning the lowest of three ceilings the car can reach at a given instant.
 
 import numpy as np
-import Physics as ph
+import physics as ph
 
 def tractive_force_4wd(tire, car, FzF, FzR, v, camber=0.0):
     """Returns the forward force (N) at the four contact patches, the lowest of the grip, motor torque and pack power ceilings.
@@ -19,8 +19,8 @@ def tractive_force_4wd(tire, car, FzF, FzR, v, camber=0.0):
     """
     # Motor speed.
     rpm = ph.motor_rpm(car, v)
-    if rpm > car.motor_rpm_max:
-        rpm = car.motor_rpm_max
+    if rpm > car.rpm_cap:
+        rpm = car.rpm_cap
         v = ph.vehicle_speed(car, rpm)
     omega = rpm * 2*np.pi/60                                   # [rad/s]
 
@@ -29,7 +29,7 @@ def tractive_force_4wd(tire, car, FzF, FzR, v, camber=0.0):
     Fx_grip_R = tire.peak(FzR, camber)[0]                      # [N] per rear wheel
 
     # Motor torque
-    T_max = np.interp(rpm, car.curve_rpm, car.curve_torque)    # [Nm] per motor
+    T_max = min(np.interp(rpm, car.curve_rpm, car.curve_torque), car.torque_cap)   # [Nm] per motor,capped
     Fx_motor = ph.wheel_force(car, T_max)                      # [N] per wheel
 
     # Pack power
@@ -50,12 +50,12 @@ def tractive_force_4wd(tire, car, FzF, FzR, v, camber=0.0):
     
     FxF, FxR, TF, TR, P_F, P_R, etaF, etaR, P_pack = demand(1.0)
 
-    if P_pack > car.max_power:                                 # too much, back it off
+    if P_pack > car.power_cap:                                 # too much, back it off
         lam = 1.0
         for _ in range(4):
-            lam *= car.max_power / P_pack          # nudge lam by the current error ratio
+            lam *= car.power_cap / P_pack          # nudge lam by the current error ratio
             FxF, FxR, TF, TR, P_F, P_R, etaF, etaR, P_pack = demand(lam)
-            if abs(P_pack - car.max_power) < 0.005 * car.max_power:
+            if abs(P_pack - car.power_cap) < 0.005 * car.power_cap:
                 break
 
     return {
@@ -85,7 +85,7 @@ def corner_speed(tire, car, R, AxG=0.0):
     R = max(abs(R), 1.0)
 
     # Rpm limit
-    v_rpm = ph.vehicle_speed(car, car.motor_rpm_max)
+    v_rpm = ph.vehicle_speed(car, car.rpm_cap)
 
     # Power to hold the speed
     def power_fits(v):
@@ -94,7 +94,7 @@ def corner_speed(tire, car, R, AxG=0.0):
         T = ph.motor_torque(car, Fx/4)                # even split in a steady corner
         rpm = ph.motor_rpm(car, v)
         eta = ph.motor_eff(car, rpm, T)               # look up once
-        return ph.pack_power(car, [T]*4, [eta]*4, rpm) <= car.max_power   # reuse it
+        return ph.pack_power(car, [T]*4, [eta]*4, rpm) <= car.power_cap   # reuse it
 
     # Grip 
     def grip_fits(v):

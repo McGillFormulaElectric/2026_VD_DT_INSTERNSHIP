@@ -26,7 +26,7 @@ class Tire:
     #   D = peak force, C = shape, B = stiffness, E = curvature, S = shifts.
     #   dfz = normalised load change, reshapes the curve with load.
 
-    def Fx(self, Fz, kappa, camber=0.0):            # longitudinal force, manual 1.2 [N]
+    def Fx(self, Fz, kappa, camber=0):            # longitudinal force, manual 1.2 [N]
         p = self.coefficient
         gamma = np.radians(camber)                  # gamma, inclination angle [rad]
         dfz = (Fz - self.Fz0) / self.Fz0            # dfz, normalised vertical load change
@@ -39,7 +39,7 @@ class Tire:
         SVx = Fz * (p["PVX1"] + p["PVX2"]*dfz) * p["LVX"] * p["LMUX"] * self.muxScale                        # vertical shift
         return Dx * np.sin(Cx*np.arctan(Bx*kappa - Ex*(Bx*kappa - np.arctan(Bx*kappa)))) + SVx
 
-    def Fy(self, Fz, alpha, camber=0.0):            # lateral force, manual 1.3 [N]
+    def Fy(self, Fz, alpha, camber=0):            # lateral force, manual 1.3 [N]
         p = self.coefficient
         gamma = np.radians(camber)                  # gamma, inclination angle [rad]
         dfz = (Fz - self.Fz0) / self.Fz0            # dfz, normalised vertical load change
@@ -56,25 +56,20 @@ class Tire:
         By    = Kya / (Cy*Dy + 1e-6)                                                                        # stiffness factor
         return Dy * np.sin(Cy*np.arctan(By*alphay - Ey*(By*alphay - np.arctan(By*alphay)))) + SVy
 
-    def grip(self, Fz, camber=0.0):                 # peak (drive, brake, lateral) [N]
+    def grip(self, Fz, camber=0):                 # peak (drive, brake, lateral) [N]
         kappa = np.linspace(0, 0.3, 200)            # sweep slip, take the max: peak = the capacity the sim uses
         alpha = np.linspace(0, 0.3, 200)
         return (np.max(np.abs(self.Fx(Fz, kappa, camber))), np.max(np.abs(self.Fx(Fz, -kappa, camber))), np.max(np.abs(self.Fy(Fz, alpha, camber))))   # drive +kappa, brake -kappa
     
-    def _build_grip_table(self, Fz_max=2500.0, n=80):
-        """Precompute peak drive/brake/lateral vs Fz, once. The solver then
-        interpolates instead of sweeping slip on every call."""
-        k = np.linspace(0, 0.20, 20)
-        a = np.linspace(0, 0.30, 20)
+    def _build_grip_table(self, Fz_max=3500.0, n=80):
+        """Precompute peak drive/brake/lateral vs Fz, once, by caching grip().
+        The solver then interpolates instead of sweeping slip on every call."""
         self._Fz_grid = np.linspace(0.0, Fz_max, n)
-        drive, brake, lat = [], [], []
-        for f in self._Fz_grid:
-            drive.append(np.max(np.abs(self.Fx(f,  k))))
-            brake.append(np.max(np.abs(self.Fx(f, -k))))
-            lat.append(  np.max(np.abs(self.Fy(f,  a))))
-        self._drive = np.array(drive)
-        self._brake = np.array(brake)
-        self._lat   = np.array(lat)
+        self._drive = np.zeros(n)
+        self._brake = np.zeros(n)
+        self._lat   = np.zeros(n)
+        for i, f in enumerate(self._Fz_grid):
+            self._drive[i], self._brake[i], self._lat[i] = self.grip(f)
     
     def peak(self, Fz, camber=0.0):
         """"Peak (drive, brake, lateral) [N], interpolated from the precomputed table."""

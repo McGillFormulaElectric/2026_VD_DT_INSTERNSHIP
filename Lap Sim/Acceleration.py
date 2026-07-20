@@ -6,9 +6,8 @@
 
 from dataclasses import dataclass
 import numpy as np
-import Physics as ph
+import physics as ph
 import Limits as lim
-
 
 @dataclass
 class AccelSolver:
