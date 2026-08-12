@@ -6,8 +6,9 @@
 
 from dataclasses import dataclass
 import numpy as np
-import physics as ph
+import Physics as ph
 import Limits as lim
+from Scoring import Scoring
 
 @dataclass
 class AccelSolver:
@@ -56,7 +57,7 @@ class AccelSolver:
             Fx_penalties = Drag + Frolling
 
             # Calculate propulsive force (N)
-            t = lim.tractive_force_4wd(tire, car, FzF, FzR, v)
+            t = lim.tractive_force_4wd(tire, car, FzF, FzF, FzR, FzR, max(v, 0.1))
             v = t["v"]
             Fx_net = t["Fx_total"] - Fx_penalties
             
@@ -93,10 +94,18 @@ class AccelSolver:
             s += ds
             k += 1
 
-        out = {key: np.asarray(v, dtype=float) for key, v in log.items()}
+        out = {key: np.asarray(val, dtype=float) for key, val in log.items()}
         out["time"] = np.concatenate(([0.0], np.cumsum(out["dt"])[:-1]))
         out["EnergyPack"] = float(np.sum(out["PackPower"] * out["dt"]))
         out["time_total"] = float(np.sum(out["dt"]))
         out["v_final"] = float(v)
-        out["n_steps"] = k
-        return out
+
+        lap_time = out["time_total"]
+        return {"event": "acceleration", "s": out["dist"], "v": out["v"],
+                "v_max": out["v_final"],
+                "t": out["time"], "P_pack": out["PackPower"],
+                "lap_time": lap_time, "energy_kWh": out["EnergyPack"] / 3.6e6,
+                "avg_power_kW": out["EnergyPack"] / lap_time / 1000,
+                "comp_point": Scoring.getAccelScore(lap_time),
+                "peak_Ax": float(np.max(out["Ax"])),
+                "rev_limited": bool(out["rpm"].max() >= car.rpm_cap - 1)}

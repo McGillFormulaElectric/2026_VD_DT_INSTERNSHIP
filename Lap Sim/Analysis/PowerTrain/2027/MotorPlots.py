@@ -7,15 +7,15 @@ from pathlib import Path
 from scipy.io import loadmat
 
 motor_type = "Fisher"  # "AMK" or "Fisher"
-DATA = Path(__file__).parent / "Powertrain_mat"
+MOTOR_DIR = Path(__file__).resolve().parents[2].parent / "Data" / "PowerTrain_mat" / motor_type
 
 # ── Load data ─────────────────────────────────────────────
-m = loadmat(DATA / motor_type / (motor_type + "_Efficiency.mat"))
+m = loadmat(MOTOR_DIR / (motor_type + "_Efficiency.mat"))
 eta_torque = np.squeeze(m["Torque"]).astype(float)
 eta_rpm    = np.squeeze(m["RPM"]).astype(float)
 eta_map    = np.asarray(m["Efficiency"], dtype=float)
 
-c = loadmat(DATA / motor_type / (motor_type + "_MotorCurve.mat"))
+c = loadmat(MOTOR_DIR / (motor_type + "_MotorCurve.mat"))
 curve_rpm    = np.squeeze(c["RPM"]).astype(float)
 curve_torque = np.squeeze(c["Tmotor"]).astype(float)
 

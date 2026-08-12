@@ -7,7 +7,7 @@ import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 from pathlib import Path
 
-DATA = Path(__file__).parent / "Powertrain_mat"
+DATA = Path(__file__).parent / "Data" / "PowerTrain_mat" 
 
 @dataclass
 class MFE27:
@@ -49,6 +49,7 @@ class MFE27:
     camber_rear:        float = 0    # deg  rear camber angle
     tire_radius:        float = 0.2032  # m  loaded radius
     tire_pressure:      float = 13      # psi tire pressure hot
+    slip_peak:          float = 7.0     # deg  slip angle at peak lateral force (Fy)
 
     # ── Suspension ────────────────────────────────────────────
     RC_height_front:         float = 0.0866   # m  front roll center height
@@ -72,17 +73,18 @@ class MFE27:
 
 
     # ── Powertrain ────────────────────────────────────────────
-    motor_type:            str   = "AMK"   # "AMK" or "Fisher"
-    power_cap:             float = 80_000  # W   total system peak power
-    torque_cap:            float = 9        # torque cap of motor [Nm]
-    torque_split:          float = 0.50    # fraction of torque to front (AWD)
-    inverter_efficiency:   float = 0.98    # fraction of power delivered to motor
-    rpm_cap:               float = 18_000  # rpm  cap of the motor 
+    motor_type:            str   = "AMK"    # "AMK" or "Fisher"
+    power_cap:             float = 80_000   # W   total system peak power
+    torque_cap:            float = 29        # torque cap of motor [Nm]
+    torque_split:          float = 0.50     # fraction of torque to front (AWD)
+    inverter_efficiency:   float = 0.98     # fraction of power delivered to motor
+    rpm_cap:               float = 20_000   # rpm  cap of the motor 
+    torque_scale:          float = 1.0      # fraction of rated torque actually delivered (correlation)
 
     drivetrain:            str   = "AWD"    # "AWD"  "RWD"  "FWD"
-    gear_ratio:            float = 13.39     # final drive ratio
+    gear_ratio:            float = 13.39    # final drive ratio
     regen:                 bool = True      # True if regen braking is enabled
-    regen_torque:          float = 1        # Nm  at motor
+    max_regen_torque:      float = 10       # Nm  at motor
     
     def __post_init__(self):
         # motor efficiency map, 2D

@@ -2,29 +2,10 @@
 # Summary : Convert a Matlab file exported from Motec to a track map
 
 class Scoring:
-    def __init__(self, Results, track_endurance):
-        track = track_endurance
-
-        # score every iteration
-        for k in range(len(Results["Energy (kWh)"])):
-            skidpad    = self.getSkidpadScore(Results["Skid Pad (s)"][k])
-            accel      = self.getAccelScore(Results["Acceleration (s)"][k])
-            autox      = self.getAutocrossScore(Results["Autocross (s)"][k])
-            endurance  = self.getEnduranceScore(Results["Endurance Time (s)"][k])
-            efficiency = self.getEfficiencyScore(Results["Endurance Time (s)"][k], Results["Energy (kWh)"][k], track)
-            total      = skidpad + accel + autox + endurance + efficiency
-
-            Results["Skid Pad Score"].append(skidpad)
-            Results["Accel Score"].append(accel)
-            Results["AutoX Score"].append(autox)
-            Results["Endurance Score"].append(endurance)
-            Results["Efficiency Score"].append(efficiency)
-            Results["Competition Points"].append(total)
-
-        self.Results = Results
-                
-    def getAccelScore(self, t_your):
-        t_min = 3.94838  # [s] Michigan 2026
+    
+    @staticmethod   
+    def getAccelScore(t_your):
+        t_min = 3.7 #3.94838  # [s] Michigan 2026
         t_max = t_min * 1.5
 
         if t_your < t_max:
@@ -35,7 +16,8 @@ class Scoring:
             score = 100
         return score
     
-    def getAutocrossScore(self, t_your):
+    @staticmethod
+    def getAutocrossScore(t_your):
         t_min = 42.61350  # [s] Michigan 2026
         t_max = t_min * 1.45
 
@@ -47,8 +29,9 @@ class Scoring:
             score = 125
         return score
     
-    def getEnduranceScore(self, t_your):
-        t_min = 1420.853  # [s] Michigan 2026
+    @staticmethod
+    def getEnduranceScore(t_your):
+        t_min = 1148 #1420.853  # [s] Michigan 2026
         t_max = t_min * 1.45
 
         if t_your < t_max:
@@ -59,7 +42,8 @@ class Scoring:
             score = 275
         return score
     
-    def getSkidpadScore(self, t_your):
+    @staticmethod
+    def getSkidpadScore(t_your):
         t_min = 4.798  # [s] Michigan 2026
         t_max = t_min * 1.25
 
@@ -71,7 +55,8 @@ class Scoring:
             score = 75
         return score
     
-    def getEfficiencyScore(self, t_your, energy, track):
+    @staticmethod
+    def getEfficiencyScore(t_your, energy, track):
         # t_your    = your event time
         # co2your   = mass of CO2 used by your car
 

@@ -3,19 +3,21 @@
 #           each returning the lowest of three ceilings the car can reach at a given instant.
 
 import numpy as np
-import physics as ph
+import Physics as ph
 
-def tractive_force_4wd(tire, car, FzF, FzR, v, camber=0.0):
+def tractive_force_4wd(tire, car, FzFL, FzFR, FzRL, FzRR, v):
     """Returns the forward force (N) at the four contact patches, the lowest of the grip, motor torque and pack power ceilings.
 
     tire   : Tire object with .grip(Fz, camber) -> (drive, brake, lateral)
     car    : CarProperties
-    FzF    : vertical load on ONE front wheel (N)
-    FzR    : vertical load on ONE rear wheel (N)
+    FzFL    : vertical load on FRONT LEFT wheel (N)
+    FzFR    : vertical load on FRONT RIGHT wheel (N)
+    FzRL    : vertical load on REAR LEFT wheel (N)
+    FzRR    : vertical load on REAR RIGHT wheel (N)
     v     : vehicle speed (m/s)
-    camber : inclination angle (deg)
 
-    Valid for Ay = 0 only. Left and right are assumed equal, hence the 2* below.
+    Per-corner grip (valid for Ay != 0). For an Ay=0 call pass the front load as
+    both FzFL/FzFR and the rear as both FzRL/FzRR — left==right falls out.
     """
     # Motor speed.
     rpm = ph.motor_rpm(car, v)
@@ -24,53 +26,63 @@ def tractive_force_4wd(tire, car, FzF, FzR, v, camber=0.0):
         v = ph.vehicle_speed(car, rpm)
     omega = rpm * 2*np.pi/60                                   # [rad/s]
 
-    # Grip 
-    Fx_grip_F = tire.peak(FzF, camber)[0]                      # [N] per front wheel
-    Fx_grip_R = tire.peak(FzR, camber)[0]                      # [N] per rear wheel
+    # Grip, per wheel (drive only — brake/lateral not needed here)
+    g_FL = tire.peak_drive(FzFL)
+    g_FR = tire.peak_drive(FzFR)
+    g_RL = tire.peak_drive(FzRL)
+    g_RR = tire.peak_drive(FzRR)
 
     # Motor torque
-    T_max = min(np.interp(rpm, car.curve_rpm, car.curve_torque), car.torque_cap)   # [Nm] per motor,capped
+    T_max = min(np.interp(rpm, car.curve_rpm, car.curve_torque), car.torque_cap) * car.torque_scale   # [Nm] per motor,capped
     Fx_motor = ph.wheel_force(car, T_max)                      # [N] per wheel
 
     # Pack power
     b = car.torque_split
     norm = max(b, 1.0 - b)
+    base_F = b/norm * Fx_motor                       # commanded force per front wheel at lam=1
+    base_R = (1-b)/norm * Fx_motor                   # per rear wheel
 
-    def demand(lam):
-        FxF = min(lam * b/norm * Fx_motor, Fx_grip_F)          # demand, clipped by grip
-        FxR = min(lam * (1-b)/norm * Fx_motor, Fx_grip_R)
-        TF = ph.motor_torque(car, FxF)                         # back to motor torque [Nm]
-        TR = ph.motor_torque(car, FxR)
-        etaF = ph.motor_eff(car, rpm, TF)
-        etaR = ph.motor_eff(car, rpm, TR)
-        P_F = TF * omega
-        P_R = TR * omega
-        P_pack = ph.pack_power(car, [TF, TF, TR, TR], [etaF, etaF, etaR, etaR], rpm)
-        return FxF, FxR, TF, TR, P_F, P_R, etaF, etaR, P_pack
-    
-    FxF, FxR, TF, TR, P_F, P_R, etaF, etaR, P_pack = demand(1.0)
+    # efficiency cached by torque: identical torques share one lookup
+    eta_cache = {}
+    def eff(t):
+        k = round(t, 2)
+        e = eta_cache.get(k)
+        if e is None:
+            e = ph.motor_eff(car, rpm, t)
+            eta_cache[k] = e
+        return e
+
+    def demand(lam, etas=None):
+        FxFL = min(lam*base_F, g_FL)            # clip each wheel by ITS OWN grip
+        FxFR = min(lam*base_F, g_FR)
+        FxRL = min(lam*base_R, g_RL)
+        FxRR = min(lam*base_R, g_RR)
+        T = [ph.motor_torque(car, f) for f in (FxFL, FxFR, FxRL, FxRR)]
+        eta = [eff(t) for t in T] if etas is None else etas   # reuse eta in back-off
+        P_pack = ph.pack_power(car, T, eta, rpm)
+        return [FxFL, FxFR, FxRL, FxRR], T, eta, P_pack
+
+    Fx, T, eta, P_pack = demand(1.0)
 
     if P_pack > car.power_cap:                                 # too much, back it off
         lam = 1.0
         for _ in range(4):
             lam *= car.power_cap / P_pack          # nudge lam by the current error ratio
-            FxF, FxR, TF, TR, P_F, P_R, etaF, etaR, P_pack = demand(lam)
+            Fx, T, eta, P_pack = demand(lam, etas=eta)   # eta ~constant as lam trims torque
             if abs(P_pack - car.power_cap) < 0.005 * car.power_cap:
                 break
 
     return {
-        "Fx_total":    2*FxF + 2*FxR,     # Ax = (Fx_total - Drag - Frolling) / mass
-        "FxF":         FxF,               # per front wheel [N]
-        "FxR":         FxR,               # per rear wheel  [N]
-        "TmotorF":     TF,                # [Nm]
-        "TmotorR":     TR,                # [Nm]
-        "P_F":         P_F,               # per motor [W]
-        "P_R":         P_R,               # per motor [W]
-        "EfficiencyF": etaF,
-        "EfficiencyR": etaR,
-        "PackPower":   P_pack,            # [W]
-        "rpm":         rpm,
-        "v":          v,                # clipped to the rev limit
+        "Fx_total": sum(Fx),              # Ax = (Fx_total - Drag - Frolling) / mass
+        "FxFL": Fx[0], "FxFR": Fx[1], "FxRL": Fx[2], "FxRR": Fx[3],
+        "Tmotor": T, "Efficiency": eta,
+        "PackPower": P_pack, "rpm": rpm, "v": v,
+        # legacy aliases (Ay=0 -> L==R)
+        "FxF": Fx[0], "FxR": Fx[2],
+        "TmotorF": T[0], "TmotorR": T[2],
+        "EfficiencyF": eta[0], "EfficiencyR": eta[2],
+        "P_F": T[0] * omega,      # per front motor [W]
+        "P_R": T[2] * omega,      # per rear motor  [W]
     }
 
 def corner_speed(tire, car, R, AxG=0.0):
@@ -135,10 +147,17 @@ def corner_speed(tire, car, R, AxG=0.0):
     DF = ph.downforce(car, v)
     Fz = np.clip([ph.FL_Fz(car, DF, Ay, AxG * car.g), ph.FR_Fz(car, DF, Ay, AxG * car.g), ph.RL_Fz(car, DF, Ay, AxG * car.g), ph.RR_Fz(car, DF, Ay, AxG * car.g)], 0.0, None)
 
+    Fx  = ph.drag(car, v) + ph.rolling_resistance(car, v, car.mass_total * car.g + DF)
+    T   = ph.motor_torque(car, Fx / 4)               # even split in a steady corner
+    rpm = ph.motor_rpm(car, v)
+    eta = ph.motor_eff(car, rpm, T)
+    P_pack = ph.pack_power(car, [T]*4, [eta]*4, rpm)  # steady power to hold the corner [W]
+    
     return {
         "v":    v,                                  # corner speed [m/s]
         "AyG":   v**2 / (R * car.g),                 # lateral acceleration [g]
         "limit": ("grip" if v == v_grip else "power" if v == v_power else "rev"),
+        "P_pack":  P_pack,
         "FzFL":  Fz[0],
         "FzFR":  Fz[1],
         "FzRL":  Fz[2],

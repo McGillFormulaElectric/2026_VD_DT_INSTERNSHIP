@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-from carProperties import MFE27
+from CarProperties import MFE27
 from Tire import Tire
 from TrackMap import TrackMap
 import Acceleration, SkidPad, Autocross, Endurance

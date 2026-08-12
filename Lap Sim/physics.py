@@ -82,12 +82,24 @@ def drag(car, v):
 # ── PowerTrain ──────────────────────────────────────────────────
 
 def motor_eff(car, rpm, torque):
-    """Returns motor efficiency (0 to 1) at a given torque (Nm) and speed (rpm),
-    bilinearly interpolated from the map. Clamped to the map edges."""
-    T = min(max(abs(torque), car.eta_torque[0]), car.eta_torque[-1])
-    N = min(max(rpm, car.eta_rpm[0]), car.eta_rpm[-1])
-    return float(interpn((car.eta_torque, car.eta_rpm), car.eta_map, [[T, N]])[0])
-    
+    """Motor efficiency (0..1), bilinear from the map, clamped to edges.
+    Hand-rolled 2x2 lookup — avoids scipy per-call overhead in the solver loop."""
+    Tg, Ng, M = car.eta_torque, car.eta_rpm, car.eta_map    # M[i,j] rows=torque, cols=rpm
+    T = min(max(abs(torque), Tg[0]), Tg[-1])
+    N = min(max(rpm,          Ng[0]), Ng[-1])
+
+    i = np.searchsorted(Tg, T) - 1
+    j = np.searchsorted(Ng, N) - 1
+    i = min(max(i, 0), len(Tg) - 2)
+    j = min(max(j, 0), len(Ng) - 2)
+
+    tT = (T - Tg[i]) / (Tg[i+1] - Tg[i])
+    tN = (N - Ng[j]) / (Ng[j+1] - Ng[j])
+
+    m00, m01 = M[i,   j], M[i,   j+1]
+    m10, m11 = M[i+1, j], M[i+1, j+1]
+    return float((m00*(1-tT)*(1-tN) + m10*tT*(1-tN)
+                + m01*(1-tT)*tN     + m11*tT*tN))
     
 def pack_power(car, torques, etas, rpm):
     """Returns the battery pack power (W) drawn by a list of motor torques (Nm) at a given motor speed (rpm)"""
@@ -109,3 +121,17 @@ def motor_torque(car, Fx):
 def wheel_force(car, T):
     """Returns the force at one contact patch (N) produced by a given motor torque (Nm)"""
     return T * car.gear_ratio / car.tire_radius
+
+# ── Cornering (induced) drag ───────────────────────────────
+
+def cornering_drag(car, Ay, utilisation):
+    """Returns the induced 'tyre' drag (N) from carrying lateral force Ay (m/s^2) at a slip angle that grows with lateral utilisation util (0 to 1)"""
+    slip = np.radians(car.slip_peak) * min(max(utilisation, 0.0), 1.0)
+    return abs(car.mass_total * Ay) * np.sin(slip)
+
+# ── Braking ────────────────────────────────────────────────
+
+def brake_force_limit(front_grip, rear_grip, brake_bias):
+    """Returns the max total braking force (N) with a fixed front brake_bias (0 to 1), capped by whichever axle saturates first: min(front_grip/bias, rear_grip/(1-bias))"""
+    b = min(max(brake_bias, 1e-6), 1.0 - 1e-6)
+    return min(front_grip / b, rear_grip / (1.0 - b))

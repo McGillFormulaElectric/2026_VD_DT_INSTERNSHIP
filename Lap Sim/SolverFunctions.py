@@ -2,7 +2,7 @@
 # Summary: Shared solver functions for the Autocross/Endurance events.
 
 import numpy as np
-import physics as ph
+import Physics as ph
 import Limits
 
 
@@ -20,17 +20,25 @@ def corner_speed_ceiling(track, car, tire, n_grid=40):
     return np.interp(np.clip(k_abs, k_lo, None), k_grid, v_grid)
 
 
-def braking_decel(car, tire, v, ax_prev=0.0):
+def braking_decel(car, tire, v, v_max, k=0.0, ax_prev=0.0):
     """Peak deceleration (m/s^2, positive) available at speed v.
     Tire braking peaks at the current loads — including longitudinal load
     transfer from the previous step's deceleration (ax_prev, negative under
     braking, same lagged-coupling scheme as Acceleration.py) — plus drag and
     rolling resistance helping, capped by the car's max_decel."""
     DF = ph.downforce(car, v)
-    FzF = max(ph.FL_Fz(car, DF, 0.0, ax_prev), 0.0)
-    FzR = max(ph.RL_Fz(car, DF, 0.0, ax_prev), 0.0)
-    F_tire = 2 * tire.peak(FzF)[1] + 2 * tire.peak(FzR)[1]
-    F_resist = ph.drag(car, v) + ph.rolling_resistance(car, v, car.mass_total * car.g + DF)
+    ay = v**2 * abs(k)
+    utilisation = (v / max(v_max, 1e-9))**2
+    FzFL = max(ph.FL_Fz(car, DF, ay, ax_prev), 0.0)
+    FzFR = max(ph.FR_Fz(car, DF, ay, ax_prev), 0.0)
+    FzRL = max(ph.RL_Fz(car, DF, ay, ax_prev), 0.0)
+    FzRR = max(ph.RR_Fz(car, DF, ay, ax_prev), 0.0)
+    front_grip = tire.peak(FzFL)[1] + tire.peak(FzFR)[1]
+    rear_grip  = tire.peak(FzRL)[1] + tire.peak(FzRR)[1]
+    F_tire = ph.brake_force_limit(front_grip, rear_grip, car.brake_bias_front)   # was: sum of all four
+    F_resist = (ph.drag(car, v)
+                + ph.rolling_resistance(car, v, car.mass_total*car.g + DF)
+                + ph.cornering_drag(car, ay, utilisation))                              # induced drag helps braking
     return min((F_tire + F_resist) / car.mass_total, car.max_decel)
 
 
@@ -53,12 +61,18 @@ def forward_pass(track, car, tire, v_max, v0, n_loops=1, closed=True):
         for i in range(n - 1):
             vi = min(v[i], v_max[i])
             DF = ph.downforce(car, vi)
-            FzF = max(ph.FL_Fz(car, DF, 0.0, ax_prev), 0.0)
-            FzR = max(ph.RL_Fz(car, DF, 0.0, ax_prev), 0.0)
-            r = Limits.tractive_force_4wd(tire, car, FzF, FzR, max(vi, 0.1))
+            ay = vi**2 * abs(track.k[i])
+            utilisation = (vi / max(v_max[i], 1e-9))**2
+            FzFL = max(ph.FL_Fz(car, DF, ay, ax_prev), 0.0)
+            FzFR = max(ph.FR_Fz(car, DF, ay, ax_prev), 0.0)
+            FzRL = max(ph.RL_Fz(car, DF, ay, ax_prev), 0.0)
+            FzRR = max(ph.RR_Fz(car, DF, ay, ax_prev), 0.0)
+            r = Limits.tractive_force_4wd(tire, car, FzFL, FzFR, FzRL, FzRR, max(vi, 0.1))
             F_trac = r["Fx_total"] * ellipse(vi, v_max[i])
-            F_net = F_trac - ph.drag(car, vi) - ph.rolling_resistance(
-                car, vi, car.mass_total * car.g + DF)
+            F_net = (F_trac
+                     - ph.drag(car, vi)
+                     - ph.rolling_resistance(car, vi, car.mass_total*car.g + DF)
+                     - ph.cornering_drag(car, ay, utilisation))
             ax = F_net / car.mass_total
             ax_prev = ax
             v[i + 1] = min(np.sqrt(max(vi**2 + 2 * ax * track.ds, 0.01)), v_max[i + 1])
@@ -79,7 +93,7 @@ def backward_pass(track, car, tire, v_max, n_loops=1, closed=True):
         dec_prev = 0.0                             # load transfer, lagged one step
         for i in range(n - 1, 0, -1):
             vi = min(v[i], v_max[i])
-            dec = braking_decel(car, tire, vi, ax_prev=-dec_prev) * ellipse(vi, v_max[i])
+            dec = braking_decel(car, tire, vi, v_max[i], k = track.k[i], ax_prev=-dec_prev) * ellipse(vi, v_max[i])
             dec_prev = dec
             v[i - 1] = min(np.sqrt(vi**2 + 2 * dec * track.ds), v_max[i - 1])
         if closed:
@@ -98,8 +112,11 @@ def energy_and_time(track, car, tire, v):
         vi = max(v[i], 0.1)
         DF = ph.downforce(car, vi)
         ax = (v[i + 1]**2 - v[i]**2) / (2 * track.ds)
-        F_resist = ph.drag(car, vi) + ph.rolling_resistance(
-            car, vi, car.mass_total * car.g + DF)
+        ay = vi**2 * abs(track.k[i])
+        util = (vi / max(v[i], 1e-9))**2
+        F_resist = (ph.drag(car, vi)
+                    + ph.rolling_resistance(car, vi, car.mass_total*car.g + DF)
+                    + ph.cornering_drag(car, ay, util))
         F_prop = car.mass_total * ax + F_resist    # force the powertrain must supply
         if F_prop > 0:                             # driving (braking energy: regen TODO)
             T = ph.motor_torque(car, F_prop / 4)   # per motor

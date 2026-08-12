@@ -9,7 +9,7 @@ from scipy.io import loadmat
 from scipy.interpolate import RegularGridInterpolator
 
 MOTORS = ["AMK", "Fisher"]           # folders/prefixes under Powertrain_mat
-DATA = Path(__file__).parent / "Powertrain_mat"
+MOTOR_DIR = Path(__file__).resolve().parents[2].parent / "Data" / "PowerTrain_mat"
 
 rdgn_deep = LinearSegmentedColormap.from_list("rdgn_deep",
     ["#a50026", "#d73027", "#f46d43", "#fdae61", "#f5c710",
@@ -18,8 +18,8 @@ rdgn_deep = LinearSegmentedColormap.from_list("rdgn_deep",
 
 def load_motor(name):
     """Load one motor's efficiency map and torque envelope into a dict."""
-    m = loadmat(DATA / name / f"{name}_Efficiency.mat")
-    c = loadmat(DATA / name / f"{name}_MotorCurve.mat")
+    m = loadmat(MOTOR_DIR / name / f"{name}_Efficiency.mat")
+    c = loadmat(MOTOR_DIR / name / f"{name}_MotorCurve.mat")
     eta_map = np.asarray(m["Efficiency"], dtype=float)
     if eta_map.max() > 1.5:          # map stored in percent -> convert to fraction
         eta_map = eta_map / 100.0

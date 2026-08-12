@@ -6,8 +6,8 @@
 #              result = solveEndurance.solve(track, car, tire)
 
 import numpy as np
-from Solver_functions import corner_speed_ceiling, lap_profile, energy_and_time
-
+from SolverFunctions import corner_speed_ceiling, lap_profile, energy_and_time
+from Scoring import Scoring
 
 def solve(track, car, tire, v_max=None):
     """Endurance: standing-start first lap plus flying laps to the target
@@ -27,10 +27,14 @@ def solve(track, car, tire, v_max=None):
     n_laps = track.n_laps
     total_time = first_lap + flying_lap * (n_laps - 1)
     total_E = E1 + E * (n_laps - 1)
+    endurance_score  = Scoring.getEnduranceScore(total_time)
+    efficiency_score = Scoring.getEfficiencyScore(total_time, total_E / 3.6e6, track)
     return {"event": "endurance", "s": track.s, "v": v, "v_max": v_max,
             "v_fwd": v_fwd, "v_bwd": v_bwd, "t": t, "P_pack": P_pack,
             "first_lap_time": first_lap, "flying_lap_time": flying_lap,
             "n_laps": n_laps, "total_time": total_time,
             "energy_per_lap_kWh": E / 3.6e6,
             "total_energy_kWh": total_E / 3.6e6,
-            "avg_power_kW": total_E / total_time / 1000}
+            "avg_power_kW": total_E / total_time / 1000,
+            "endurance_score": endurance_score,
+            "efficiency_score": efficiency_score}
