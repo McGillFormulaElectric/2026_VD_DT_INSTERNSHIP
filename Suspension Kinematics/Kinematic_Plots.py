@@ -11,6 +11,7 @@
 #                                 heave_damper_len, roll_damper_len
 
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 from Suspension_Geometry import (FL, FR, RL, RR, F_len, R_len,
                                  wheelbase, track_front)
@@ -118,6 +119,45 @@ def kplot(title, xlabel, ylabel, series):
     ax.legend()             # built from the label= kwargs above
     plt.tight_layout()      # fix margins so labels don't clip
 
+# ════════════════════════ 2.1 Plot saver ════════════════════════
+
+def save_all_figures(folder_path, extension="png", dpi=300, close_after_saving=False):
+    """
+    Saves all currently open matplotlib figures to a specified directory.
+    
+    Parameters:
+    - folder_path: The directory where figures will be saved.
+    - extension: File format (e.g., 'png', 'pdf', 'svg', 'jpg').
+    - dpi: Resolution for the saved images (300 is standard for high quality).
+    - close_after_saving: If True, closes figures after saving to free memory.
+    """
+    # Create the target directory if it doesn't exist
+    os.makedirs(folder_path, exist_ok=True)
+    
+    # Get a list of all active figure numbers
+    fig_nums = plt.get_fignums()
+    
+    if not fig_nums:
+        print("No open figures found to save.")
+        return
+
+    for num in fig_nums:
+        # Retrieve the specific figure
+        fig = plt.figure(num)
+        
+        # Construct the file path
+        filename = f"figure_{num}.{extension}"
+        filepath = os.path.join(folder_path, filename)
+        
+        # Save the figure
+        # bbox_inches='tight' removes excess white space around the plot
+        fig.savefig(filepath, dpi=dpi, bbox_inches='tight')
+        print(f"Saved: {filepath}")
+        
+        # Close the figure to free up memory if requested
+        if close_after_saving:
+            plt.close(fig)
+
 # ═══════════ 3. THE PLOTS — comment out what you don't need ════════
 
 # ── Heave ──────────────────────────────────────────────────────────
@@ -219,4 +259,7 @@ kplot("Roll Motion Ratio vs Roll", "Roll (deg)", "MR (wheel / damper)", [
     ("Rear",  x_roll, y(roll, "roll_MR", "rear")),
 ])
 
+save_all_figures('C:/Users/zBoox 15v G5/Local_McGill_Formula_Electric/MFE26-SUS', extension='tiff', dpi=300, close_after_saving=False)
+
 plt.show()
+
