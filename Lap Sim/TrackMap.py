@@ -1,6 +1,7 @@
 # Author : Anne-Sophie Nadeau
-# Summary : Convert a Matlab file exported from Motec to a track map
+# Summary : Load a Matlab file exported from Motec, build a track map, and save it to a folder
 
+import os
 import numpy as np
 from scipy.interpolate import splprep, splev
 from scipy.signal import find_peaks
@@ -9,30 +10,14 @@ from scipy.signal import find_peaks
 class TrackMap:
     def __init__(self, motec):
         # Put the name use in motec
-        self.lat = motec.getValue("GPS_Latitude")   # GPS latitude  [deg]
-        self.lon = motec.getValue("GPS_Longitude")   # GPS longitude [deg]
+        self.lat = motec.getValue("lat")   # GPS latitude  [deg]
+        self.lon = motec.getValue("lon")   # GPS longitude [deg]
 
     def createTrack(self, event="autocross", n_apex=10, ds=0.25, endurance_distance=22000.0, accel_length=75.0, skidpad_radius=9.125):
         event = event.lower()
-
-        # autocross and endurance both use the real GPS track
-        if event in ("autocross", "endurance"):
-            x, y, s, k = self.buildFromGPS(ds)
-            lap_length = s[-1]
-            n_laps = round(endurance_distance / lap_length) if event == "endurance" else 1
-
-        # accel is just a straight line, no GPS
-        elif event == "accel":
-            s = np.arange(0, accel_length + ds, ds)   # 0 to 75 m
-            x = s.copy()
-            y = np.zeros(len(s))
-            k = np.zeros(len(s))                      # straight, so no curvature
-            lap_length, n_laps = accel_length, 1
-
-        # skidpad is two circles (figure 8)
-        elif event == "skidpad":
-            x, y, s, k = self.figureEight(skidpad_radius, ds)
-            lap_length, n_laps = s[-1], 1
+        x, y, s, k = self.buildFromGPS(ds)
+        lap_length = s[-1]
+        n_laps = round(endurance_distance / lap_length) if event == "endurance" else 1
 
         # save the results so we can use track.x, track.y, track.s, track.ds, track.k
         self.x, self.y, self.s, self.ds, self.k = x, y, s, ds, k
@@ -81,26 +66,6 @@ class TrackMap:
 
         return x, y, s, k
 
-    def figureEight(self, R, ds):
-        # angle steps so the spacing along the circle is ds
-        angle = np.arange(0, 2*np.pi, ds / R)
-
-        # right circle (clockwise), curvature is negative
-        x1 = R + R * np.cos(np.pi - angle)
-        y1 = R * np.sin(np.pi - angle)
-
-        # left circle (anticlockwise), curvature is positive
-        x2 = -R + R * np.cos(angle)
-        y2 = R * np.sin(angle)
-
-        x = np.append(x1, x2)
-        y = np.append(y1, y2)
-        s = np.arange(len(x)) * ds
-
-        # constant curvature 1/R, negative on first circle, positive on second
-        k = np.append(-np.ones(len(x1)), np.ones(len(x2))) / R
-
-        return x, y, s, k
 
     def findApexes(self, n_apex):
         # all local maxima of |curvature| (every possible apex)
@@ -119,3 +84,27 @@ class TrackMap:
         # the tuned min_peak is the curvature of the weakest one we kept
         self.min_peak = np.sort(heights)[-n_apex]
         return list(apex)
+
+
+# save every track field into folder/<event>.npz
+def saveTrack(track, folder):
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, track.event + ".npz")
+    np.savez(path,
+             x=track.x, y=track.y, s=track.s, ds=track.ds, k=track.k,
+             apex=track.apex, n_laps=track.n_laps,
+             lap_length=track.lap_length, event=track.event)
+    return path
+
+
+# read folder/<event>.npz back into a TrackMap (no Motec file needed)
+def loadTrack(folder, event):
+    data = np.load(os.path.join(folder, event + ".npz"))
+    track = TrackMap.__new__(TrackMap)   # skip __init__, no Motec file to read
+    track.x, track.y, track.s, track.k = data["x"], data["y"], data["s"], data["k"]
+    track.ds = float(data["ds"])
+    track.apex = list(data["apex"])
+    track.n_laps = int(data["n_laps"])
+    track.lap_length = float(data["lap_length"])
+    track.event = str(data["event"])
+    return track

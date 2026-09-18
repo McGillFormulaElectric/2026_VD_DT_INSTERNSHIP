@@ -67,9 +67,9 @@ class Scoring:
         co2your = energy * conversion_factor
         t_max = t_min * 1.45
 
-        efficiency_factor_your = (t_min / track.number_laps) / (t_your / track.number_laps) * (co2_min / track.number_laps) / (co2your / track.number_laps)
-        efficiency_factor_min = (t_min / track.number_laps) / (t_max / track.number_laps) * (co2_min / track.number_laps) / (track.s[-1] / 1000 * 20.02 / 100)
-        efficiency_factor_max = (t_min / track.number_laps) / (t_co2min / track.number_laps) * (co2_min / track.number_laps) / (co2_min / track.number_laps)
+        efficiency_factor_your = (t_min / track.n_laps) / (t_your / track.n_laps) * (co2_min / track.n_laps) / (co2your / track.n_laps)
+        efficiency_factor_min = (t_min / track.n_laps) / (t_max / track.n_laps) * (co2_min / track.n_laps) / (track.s[-1] / 1000 * 20.02 / 100)
+        efficiency_factor_max = (t_min / track.n_laps) / (t_co2min / track.n_laps) * (co2_min / track.n_laps) / (co2_min / track.n_laps)
         score = 100 * (efficiency_factor_your - efficiency_factor_min) / (efficiency_factor_max - efficiency_factor_min)
 
         return score

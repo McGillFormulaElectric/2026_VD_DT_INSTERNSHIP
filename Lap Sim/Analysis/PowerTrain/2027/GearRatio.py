@@ -3,7 +3,6 @@
 #          ratio that maximizes competition points.
 #          Total = Skidpad + Accel + Endurance + Efficiency (Autocross hook below).
 #          Endurance track is the Michigan .mat, cached to Data/Track as .npz.
-
 import sys, pathlib, time
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,22 +15,19 @@ from Tire import Tire
 from Acceleration import AccelSolver
 from SkidPad import SkidPadSolver
 from Endurance import solve as endurance_solve
-from SaveTrack import load_mat_track
-# from Autocross import solve as autocross_solve   # hook: uncomment to include AutoX
+from TrackMap import loadTrack
 
 DATA = CORE / "Data"
 
-# -- sweep settings --
-GEAR_MIN, GEAR_MAX, GEAR_STEP = 9.0, 16.0, 0.5   # inclusive of 16
+# sweep settings
+GEAR_MIN, GEAR_MAX, GEAR_STEP = 9.0, 16.0, 0.5
 
-print("CORE =", CORE)                          # sanity: should end in ...\Lap Sim
-
-# -- load car, tire, endurance track ----------------------------------------
+# load car, tire, endurance track 
 car  = MFE27()
 tire = Tire(str(DATA / "Tire" / "MF61_Coefficients.csv"))
 
-mat = DATA / "Track" / "Endurance_Michigan_2024.mat"
-track_en = load_mat_track(mat)
+mat = DATA / "Track"
+track_en = loadTrack(mat, "autocross")   # endurance track is the Michigan .mat, cached to Data/Track as .npz
 
 # -- sweep ------------------------------------------------------------------
 baseline = car.gear_ratio

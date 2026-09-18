@@ -73,7 +73,7 @@ class MFE27:
 
 
     # ── Powertrain ────────────────────────────────────────────
-    motor_type:            str   = "AMK"    # "AMK" or "Fisher"
+    motor_type:            str   = "Fisher"    # "AMK" or "Fisher"
     power_cap:             float = 80_000   # W   total system peak power
     torque_cap:            float = 29        # torque cap of motor [Nm]
     torque_split:          float = 0.50     # fraction of torque to front (AWD)
@@ -82,7 +82,7 @@ class MFE27:
     torque_scale:          float = 1.0      # fraction of rated torque actually delivered (correlation)
 
     drivetrain:            str   = "AWD"    # "AWD"  "RWD"  "FWD"
-    gear_ratio:            float = 13.39    # final drive ratio
+    gear_ratio:            float = 15    # final drive ratio
     regen:                 bool = True      # True if regen braking is enabled
     max_regen_torque:      float = 10       # Nm  at motor
     
