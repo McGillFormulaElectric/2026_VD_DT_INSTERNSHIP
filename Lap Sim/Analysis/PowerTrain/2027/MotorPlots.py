@@ -6,7 +6,15 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from scipy.io import loadmat
 
-motor_type = "Fisher"  # "AMK" or "Fisher"
+###########################################
+
+#___________SELECT_A_MOTOR_____________#
+
+motor_type = "AMK"  # "AMK" or "Fisher"
+
+###########################################
+
+
 MOTOR_DIR = Path(__file__).resolve().parents[2].parent / "Data" / "PowerTrain_mat" / motor_type
 
 # ── Load data ─────────────────────────────────────────────
@@ -29,15 +37,32 @@ ax1.set_ylabel("Motor torque [Nm]")
 ax1.set_title(f"{motor_type} torque envelope")
 ax1.grid(alpha=0.3)
 
-# Right: efficiency map with envelope overlaid
-pc = ax2.pcolormesh(eta_rpm, eta_torque, eta_map,
-                    cmap="RdYlGn", shading="gouraud") #Use shading = "nearest" for no blending, "gouraud" for smooth blending
-fig.colorbar(pc, ax=ax2, label="Efficiency η")
+# Right: efficiency map as filled contours + labelled iso-efficiency lines
+eta_pct = eta_map * (100 if eta_map.max() <= 1.5 else 1)
+
+###############################
+levels  = np.arange(82, 100.1, 2) #Adjust resolution of colors
+###############################
+
+cf = ax2.contourf(eta_rpm, eta_torque, eta_pct, levels=levels, cmap="RdYlGn", extend="min")
+
+###############################
+cs = ax2.contour (eta_rpm, eta_torque, eta_pct, levels=levels[::1], colors="k", linewidths=0.6) #Adjust resolution of lines
+###############################
+
+
+ax2.clabel(cs, fmt="%d%%", fontsize=8, inline=True)
+fig.colorbar(cf, ax=ax2, label="Efficiency [%]")
 ax2.plot(curve_rpm, curve_torque, "k-", lw=2, label="Envelope")
-ax2.set_xlabel("Motor speed [rpm]")
-ax2.set_ylabel("Motor torque [Nm]")
-ax2.set_title(f"{motor_type} efficiency map")
-ax2.legend(loc="lower right")
+
+################################
+#Adjust Axis Limits
+ax2.set_xlim(eta_rpm.min(), curve_rpm.max())
+ax2.set_ylim(eta_torque.min(), curve_torque.max())
+################################
+
+ax2.set_xlabel("Motor speed [rpm]"); ax2.set_ylabel("Motor torque [Nm]")
+ax2.set_title(f"{motor_type} efficiency map"); ax2.legend(loc="lower right")
 
 plt.tight_layout()
 plt.show()
