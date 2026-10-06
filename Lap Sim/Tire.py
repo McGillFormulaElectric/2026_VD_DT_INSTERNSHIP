@@ -1,172 +1,167 @@
 # Author: Anne-Sophie
-# Summary: Reads MF6.1 fitted coefficients from the exported CSV and returns
-#          peak tyre grip vs vertical load and camber, to build GG_Fz.
-#          Slip in radians, camber in degrees.
+# Tire model for the lap sim.
 #
-# Equations: TNO MF-Tyre/MF-Swift 6.2 Equation Manual (rev 20130706),
-#            section 1.2 (Fx) and 1.3 (Fy), steady-state pure slip.
-#            Variable names follow the manual's symbols; comments give meaning.
-#            Moments, pressure, and MF-Swift transients omitted (nominal pressure).
+# What this does:
+#   Loads the MF6.1 tyre fit we made in MATLAB (from TTC data) and tells the sim
+#   how much force each tyre can make at a given vertical load Fz.
+#   The sim only needs the PEAK force (the most grip the tyre has), so we compute
+#   that once into a table at startup, then just look it up while the sim runs.
+#   That lookup is what keeps the sim fast.
+#
+# Units: Fz in N, slip angle and slip ratio in radians, camber in degrees.
+# Equations: TNO MF-Tyre 6.2 Equation Manual, section 1.2 (Fx) and 1.3 (Fy),
+#            steady state, pure slip, nominal pressure. Names follow the manual.
 
 import numpy as np
+import scipy.io
+
 
 class Tire:
-    # muxScale/muyScale are the correlated grip levels from the Main.m g-g match
-    # (raw fit is too grippy). Setting either one after construction (tire.muyScale
-    # = 0.85) now rebuilds the grip table automatically, so peak() picks it up.
-    # build_camber is the static camber the table is baked at — set it to the car's
-    # real static camber so peak() reflects camber thrust instead of a 0 deg tyre.
-    def __init__(self, file_path, muxScale=0.6, muyScale=0.9,
+    def __init__(self, param_path, fzref_path, muxScale=0.474, muyScale=0.65,
                  Fz_max=3500.0, n_grid=80, build_camber=0.0):
-        name, value = np.loadtxt(file_path, delimiter=",", dtype=str, unpack=True)
-        self.coefficient = {n: float(v) for n, v in zip(name, value)}
-        self.Fz0 = self.coefficient["Fz0"]         # Fz0, nominal load the fit is referenced to [N]
-        # Set backing fields directly so the property setters don't try to rebuild
-        # the table before the grid exists; build once at the end of __init__.
+        # param_path: MF61_Parameters.mat, holds Fz0, the coefficients (p) and scaling factors (lamda)
+        # fzref_path: FZ_Reference.mat, the loads the TTC fit was done at
+        # muxScale, muyScale: grip correction from correlation. The raw TTC fit is
+        #                     too grippy (sandpaper belt), so we scale it down to match the car.
+        # Fz_max, n_grid: the grip table covers 0 to Fz_max N in n_grid points
+        # build_camber: static camber of the car [deg], the table is built at this camber
+        mat = scipy.io.loadmat(param_path, struct_as_record=False, squeeze_me=True)
+        p = mat["p"]
+        lam = mat["lamda"]
+        self.FZref = np.asarray(scipy.io.loadmat(fzref_path, squeeze_me=True)["FZref"], float)
+        self.Fz0 = float(mat["Fz0"])   # reference load of the fit [N]
+
+        # rename the MATLAB fields to the manual's names (p.Cx1 -> PCX1)
+        # lambdas not in the MATLAB file are set to 1.0, which means "no scaling"
+        self.coefficient = {
+            # longitudinal
+            "PCX1": p.Cx1, "PDX1": p.Dx1, "PDX2": p.Dx2, "PDX3": p.Dx3,
+            "PEX1": p.Ex1, "PEX2": p.Ex2, "PEX3": p.Ex3, "PEX4": p.Ex4,
+            "PKX1": p.Kx1, "PKX2": p.Kx2, "PKX3": p.Kx3,
+            "PVX1": p.Vx1, "PVX2": p.Vx2,
+            "LMUX": lam.mu_x, "LKX": lam.Kx_kappa, "LVX": 1.0,
+            # lateral
+            "PCY1": p.Cy1, "PDY1": p.Dy1, "PDY2": p.Dy2, "PDY3": p.Dy3,
+            "PEY1": p.Ey1, "PEY2": p.Ey2, "PEY3": p.Ey3, "PEY4": p.Ey4, "PEY5": p.Ey5,
+            "PKY1": p.Ky1, "PKY2": p.Ky2, "PKY3": p.Ky3, "PKY4": p.Ky4,
+            "PKY5": p.Ky5, "PKY6": p.Ky6, "PKY7": p.Ky7,
+            "PHY1": p.Hy1, "PHY2": p.Hy2,
+            "PVY1": p.Vy1, "PVY2": p.Vy2, "PVY3": p.Vy3, "PVY4": p.Vy4,
+            "LMUY": lam.mu_y, "LKY": 1.0, "LKYC": 1.0, "LHY": 1.0, "LVY": 1.0,
+        }
+
         self._muxScale = muxScale
         self._muyScale = muyScale
-        self._Fz_max = Fz_max
-        self._n_grid = n_grid
-        self._build_camber = build_camber
-        self._ready = True
-        self._build_grip_table()
+        self.Fz_max = Fz_max
+        self.n_grid = n_grid
+        self.build_camber = build_camber
+        self.build_table()
 
-    # --- grip-level / build knobs: assigning any of these rebuilds the table ---
+    # muxScale and muyScale rebuild the table when you change them,
+    # so "tire.muyScale = 0.85" is all you need, peak() is up to date right after
     @property
     def muxScale(self):
         return self._muxScale
 
     @muxScale.setter
-    def muxScale(self, val):
-        self._muxScale = val
-        if getattr(self, "_ready", False):
-            self._build_grip_table()
+    def muxScale(self, value):
+        self._muxScale = value
+        self.build_table()
 
     @property
     def muyScale(self):
         return self._muyScale
 
     @muyScale.setter
-    def muyScale(self, val):
-        self._muyScale = val
-        if getattr(self, "_ready", False):
-            self._build_grip_table()
+    def muyScale(self, value):
+        self._muyScale = value
+        self.build_table()
 
-    @property
-    def build_camber(self):
-        return self._build_camber
+    # Magic Formula, the shape of a tyre force curve:
+    #   F = D * sin(C * atan(B*x - E*(B*x - atan(B*x)))) + SV
+    #   x  = slip (slip ratio kappa for Fx, slip angle alpha for Fy)
+    #   D  = peak force, the top of the curve
+    #   C  = shape, how the curve looks after the peak
+    #   B  = stiffness, how steep the curve starts
+    #   E  = curvature, how round the peak is
+    #   SV, SH = small shifts so the curve doesn't have to pass through zero
+    #   dfz = how far Fz is from Fz0, in fraction. Grip per N drops as load goes up.
 
-    @build_camber.setter
-    def build_camber(self, val):
-        self._build_camber = val
-        if getattr(self, "_ready", False):
-            self._build_grip_table()
-
-    @property
-    def Fz_max(self):
-        return self._Fz_max
-
-    @Fz_max.setter
-    def Fz_max(self, val):
-        self._Fz_max = val
-        if getattr(self, "_ready", False):
-            self._build_grip_table()
-
-    def set_scales(self, muxScale=None, muyScale=None, build_camber=None):
-        """Set several knobs and rebuild the grip table ONCE (cheaper than
-        assigning them one at a time when each assignment rebuilds)."""
-        if muxScale is not None:
-            self._muxScale = muxScale
-        if muyScale is not None:
-            self._muyScale = muyScale
-        if build_camber is not None:
-            self._build_camber = build_camber
-        self._build_grip_table()
-
-    # Magic Formula (manual sec 1.2, 1.3):
-    #   F = D*sin(C*atan(B*x - E*(B*x - atan(B*x)))) + SV
-    #   D = peak force, C = shape, B = stiffness, E = curvature, S = shifts.
-    #   dfz = normalised load change, reshapes the curve with load.
-
-    def Fx(self, Fz, kappa, camber=0):            # longitudinal force, manual 1.2 [N]
+    def Fx(self, Fz, kappa, camber=0):
+        # longitudinal force [N] for a slip ratio kappa (+ drive, - brake)
         p = self.coefficient
-        gamma = np.radians(camber)                  # gamma, inclination angle [rad]
-        dfz = (Fz - self.Fz0) / self.Fz0            # dfz, normalised vertical load change
-        Cx  = p["PCX1"]                                                                                     # shape factor
-        mux = (p["PDX1"] + p["PDX2"]*dfz) * (1 - p["PDX3"]*gamma**2) * p["LMUX"] * self.muxScale            # peak friction coefficient
-        Dx  = mux * Fz                                                                                      # peak force
-        Ex  = np.minimum((p["PEX1"] + p["PEX2"]*dfz + p["PEX3"]*dfz**2) * (1 - p["PEX4"]*np.sign(kappa)), 1.0)   # curvature (<=1); sign(kappa) = drive/brake asymmetry
-        Kxk = Fz * (p["PKX1"] + p["PKX2"]*dfz) * np.exp(p["PKX3"]*dfz) * p["LKX"]                            # slip stiffness Kx_kappa
-        Bx  = Kxk / (Cx*Dx + 1e-6)                                                                          # stiffness factor (1e-6 guards Fz=0)
-        SVx = Fz * (p["PVX1"] + p["PVX2"]*dfz) * p["LVX"] * p["LMUX"] * self.muxScale                        # vertical shift
+        gamma = np.radians(camber)
+        dfz = (Fz - self.Fz0) / self.Fz0
+
+        Cx = p["PCX1"]
+        mux = (p["PDX1"] + p["PDX2"]*dfz) * (1 - p["PDX3"]*gamma**2) * p["LMUX"] * self.muxScale   # friction coefficient
+        Dx = mux * Fz
+        Ex = np.minimum((p["PEX1"] + p["PEX2"]*dfz + p["PEX3"]*dfz**2) * (1 - p["PEX4"]*np.sign(kappa)), 1.0)   # drive and brake can differ
+        Kx = Fz * (p["PKX1"] + p["PKX2"]*dfz) * np.exp(p["PKX3"]*dfz) * p["LKX"]   # slip stiffness, slope at zero slip
+        Bx = Kx / (Cx*Dx + 1e-6)   # 1e-6 avoids divide by zero at Fz = 0
+        SVx = Fz * (p["PVX1"] + p["PVX2"]*dfz) * p["LVX"] * p["LMUX"] * self.muxScale
+
         return Dx * np.sin(Cx*np.arctan(Bx*kappa - Ex*(Bx*kappa - np.arctan(Bx*kappa)))) + SVx
 
-    def Fy(self, Fz, alpha, camber=0):            # lateral force, manual 1.3 [N]
+    def Fy(self, Fz, alpha, camber=0):
+        # lateral force [N] for a slip angle alpha
         p = self.coefficient
-        gamma = np.radians(camber)                  # gamma, inclination angle [rad]
-        dfz = (Fz - self.Fz0) / self.Fz0            # dfz, normalised vertical load change
-        Cy    = p["PCY1"]                                                                                   # shape factor
-        muy   = (p["PDY1"] + p["PDY2"]*dfz) * (1 - p["PDY3"]*gamma**2) * p["LMUY"] * self.muyScale          # peak friction coeff; PDY2<0 -> grip falls with load
-        Dy    = muy * Fz                                                                                    # peak force
-        Kya   = p["PKY1"]*self.Fz0 * (1 - p["PKY3"]*abs(gamma)) * np.sin(p["PKY4"]*np.arctan((Fz/self.Fz0) / (p["PKY2"] + p["PKY5"]*gamma**2))) * p["LKY"]   # cornering stiffness Ky_alpha
-        Kyg0  = Fz * (p["PKY6"] + p["PKY7"]*dfz) * p["LKYC"]                                                # camber stiffness Ky_gamma0
-        SVyg  = Fz * (p["PVY3"] + p["PVY4"]*dfz) * gamma * p["LKYC"] * p["LMUY"] * self.muyScale            # camber-thrust part of vertical shift
-        SVy   = Fz * (p["PVY1"] + p["PVY2"]*dfz) * p["LVY"] * p["LMUY"] * self.muyScale + SVyg              # total vertical shift
-        SHy   = (p["PHY1"] + p["PHY2"]*dfz) * p["LHY"] + (Kyg0*gamma - SVyg) / (Kya + 1e-6)                 # horizontal shift, carries camber onto slip axis
-        alphay = alpha + SHy                                                                                # shifted slip angle alpha_y
-        Ey    = np.minimum((p["PEY1"] + p["PEY2"]*dfz) * (1 + p["PEY5"]*gamma**2 - (p["PEY3"] + p["PEY4"]*gamma)*np.sign(alphay)), 1.0)   # curvature (<=1)
-        By    = Kya / (Cy*Dy + 1e-6)                                                                        # stiffness factor
-        return Dy * np.sin(Cy*np.arctan(By*alphay - Ey*(By*alphay - np.arctan(By*alphay)))) + SVy
+        gamma = np.radians(camber)
+        dfz = (Fz - self.Fz0) / self.Fz0
 
-    def grip(self, Fz, camber=0):                 # peak (drive, brake, lateral) [N]
-        kappa = np.linspace(0, 0.3, 200)            # sweep slip, take the max: peak = the capacity the sim uses
+        Cy = p["PCY1"]
+        muy = (p["PDY1"] + p["PDY2"]*dfz) * (1 - p["PDY3"]*gamma**2) * p["LMUY"] * self.muyScale   # friction coefficient
+        Dy = muy * Fz
+        Ky = p["PKY1"]*self.Fz0 * (1 - p["PKY3"]*abs(gamma)) * np.sin(p["PKY4"]*np.arctan((Fz/self.Fz0) / (p["PKY2"] + p["PKY5"]*gamma**2))) * p["LKY"]   # cornering stiffness
+        Kyg = Fz * (p["PKY6"] + p["PKY7"]*dfz) * p["LKYC"]   # camber stiffness
+
+        # camber thrust: camber adds a bit of side force on its own
+        SVyg = Fz * (p["PVY3"] + p["PVY4"]*dfz) * gamma * p["LKYC"] * p["LMUY"] * self.muyScale
+        SVy = Fz * (p["PVY1"] + p["PVY2"]*dfz) * p["LVY"] * p["LMUY"] * self.muyScale + SVyg
+        SHy = (p["PHY1"] + p["PHY2"]*dfz) * p["LHY"] + (Kyg*gamma - SVyg) / (Ky + 1e-6)
+        alpha_y = alpha + SHy
+
+        Ey = np.minimum((p["PEY1"] + p["PEY2"]*dfz) * (1 + p["PEY5"]*gamma**2 - (p["PEY3"] + p["PEY4"]*gamma)*np.sign(alpha_y)), 1.0)
+        By = Ky / (Cy*Dy + 1e-6)
+
+        return Dy * np.sin(Cy*np.arctan(By*alpha_y - Ey*(By*alpha_y - np.arctan(By*alpha_y)))) + SVy
+
+    def grip(self, Fz, camber=0):
+        # peak (drive, brake, lateral) force [N]
+        # sweeps slip from 0 to 0.3 and keeps the max. Slow, so only used to build the table.
+        kappa = np.linspace(0, 0.3, 200)
         alpha = np.linspace(0, 0.3, 200)
-        return (np.max(np.abs(self.Fx(Fz, kappa, camber))), np.max(np.abs(self.Fx(Fz, -kappa, camber))), np.max(np.abs(self.Fy(Fz, alpha, camber))))   # drive +kappa, brake -kappa
+        drive = np.max(np.abs(self.Fx(Fz, kappa, camber)))
+        brake = np.max(np.abs(self.Fx(Fz, -kappa, camber)))
+        lateral = np.max(np.abs(self.Fy(Fz, alpha, camber)))
+        return drive, brake, lateral
 
-    def _build_grip_table(self):
-        """Precompute peak drive/brake/lateral vs Fz, once, by caching grip()
-        at the build camber. The solver then interpolates instead of sweeping
-        slip on every call. Called again automatically when a grip-level or
-        build knob changes, so peak() never goes stale."""
-        self._Fz_grid = np.linspace(0.0, self._Fz_max, self._n_grid)
-        self._drive = np.zeros(self._n_grid)
-        self._brake = np.zeros(self._n_grid)
-        self._lat   = np.zeros(self._n_grid)
-        for i, f in enumerate(self._Fz_grid):
-            self._drive[i], self._brake[i], self._lat[i] = self.grip(f, self._build_camber)
+    def build_table(self):
+        # compute peak grip at n_grid loads from 0 to Fz_max, once
+        # the sim then interpolates in this table instead of calling grip() every step
+        self.Fz_grid = np.linspace(0.0, self.Fz_max, self.n_grid)
+        self.drive_table = np.zeros(self.n_grid)
+        self.brake_table = np.zeros(self.n_grid)
+        self.lat_table = np.zeros(self.n_grid)
+        for i, Fz in enumerate(self.Fz_grid):
+            self.drive_table[i], self.brake_table[i], self.lat_table[i] = self.grip(Fz, self.build_camber)
 
-    def peak(self, Fz, camber=None):
-        """Peak (drive, brake, lateral) [N], interpolated from the precomputed
-        table. camber is ignored by default (the table is baked at build_camber);
-        pass an explicit camber only for a one-off off-table query, which sweeps
-        slip live and is slow — do not call it from the solver hot loop.
+    def peak(self, Fz):
+        # peak (drive, brake, lateral) force [N] at load Fz, from the table. This is what the sim calls.
+        # careful: above Fz_max the table holds the last value flat, keep wheel loads under Fz_max
+        return (float(np.interp(Fz, self.Fz_grid, self.drive_table)),
+                float(np.interp(Fz, self.Fz_grid, self.brake_table)),
+                float(np.interp(Fz, self.Fz_grid, self.lat_table)))
 
-        NOTE: np.interp clamps above Fz_max, so a wheel loaded past the top of
-        the grid returns the grip AT Fz_max held flat, not the continued falloff.
-        Check max wheel load across a run stays under Fz_max (raise it if not)."""
-        if camber is not None:
-            return self.grip(Fz, camber)
-        return (float(np.interp(Fz, self._Fz_grid, self._drive)),
-                float(np.interp(Fz, self._Fz_grid, self._brake)),
-                float(np.interp(Fz, self._Fz_grid, self._lat)))
-        
     def peak_drive(self, Fz):
-        """Peak drive force [N] only — the traction solver's hot path, avoids
-        interpolating the brake/lateral columns it does not use."""
-        return float(np.interp(Fz, self._Fz_grid, self._drive))
+        # peak drive force only [N], used by the traction solver which doesn't need brake or lateral
+        return float(np.interp(Fz, self.Fz_grid, self.drive_table))
 
-    def max_table_load(self):
-        """Top of the Fz grid [N] — compare against the largest wheel load you
-        actually see, to know whether peak() is clamping."""
-        return self._Fz_max
-
-    def peak_slip_angle(self, Fz=None, camber=None, a_max_deg=12.0, n=600):
-        """Slip angle [deg] at maximum lateral force — the value cornering_drag
-        uses as slip_peak. Swept from the MF Fy curve, so it always matches the
-        loaded tyre. Defaults: 1.5*Fz0 (a fast-corner outer-wheel load, where
-        induced drag matters) and the table's build camber."""
-        Fz = 1.5 * self.Fz0 if Fz is None else Fz
-        camber = self._build_camber if camber is None else camber
+    def peak_slip_angle(self, Fz=None, a_max_deg=12.0, n=600):
+        # slip angle [deg] where lateral force is max, used as car.slip_peak in cornering_drag
+        # default load is 1.5 * Fz0, a loaded outside wheel in a fast corner
+        if Fz is None:
+            Fz = 1.5 * self.Fz0
         alpha = np.radians(np.linspace(0.0, a_max_deg, n))
-        Fy = np.abs(self.Fy(Fz, alpha, camber))
+        Fy = np.abs(self.Fy(Fz, alpha, self.build_camber))
         return float(np.degrees(alpha[np.argmax(Fy)]))

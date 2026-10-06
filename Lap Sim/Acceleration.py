@@ -62,7 +62,7 @@ class AccelSolver:
             Fx_net = t["Fx_total"] - Fx_penalties
             
             # Calculate acceleration (m/s²)
-            Ax = Fx_net / car.mass_total
+            Ax = Fx_net / car.mass_effective
 
             # Update speed and position
             v_next = np.sqrt(max(v**2 + 2.0*Ax*ds, 0.0))

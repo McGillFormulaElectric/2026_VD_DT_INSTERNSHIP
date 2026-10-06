@@ -7,7 +7,7 @@ import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 from pathlib import Path
 
-DATA = Path(__file__).parent / "Data" / "PowerTrain_mat" 
+DATA = Path(__file__).parent / "1. Data" / "PowerTrain_mat" 
 
 @dataclass
 class MFE27:
@@ -25,7 +25,10 @@ class MFE27:
     mass_aero:          float = 16.0  # kg  aerodynamic mass
     mass_unsprung_f:    float = 32.0  # kg  unsprung mass (front)
     mass_unsprung_r:    float = 32.0  # kg  unsprung mass (rear)
-    mass_no_driver:     float = 203.0 # kg  total mass without driver
+    mass_no_driver:     float = 185.0 # kg  total mass without driver
+    J_motor:            float = 0.00033 #0.000274  # kg m²  rotor inertia per motor, check the AMK datasheet
+    J_wheel:            float = 0.10      # kg m²  wheel + tyre + hub per corner, estimate or measure
+
 
     @property
     def mass_total(self):  # kg  total mass of the car with driver
@@ -42,12 +45,16 @@ class MFE27:
     @property
     def mass_sprung_rear(self):  # kg  (chassis + aero + battery)
         return self.mass_sprung * (1-self.CGx)
+    
+    @property
+    def mass_effective(self):  # kg  mass + spinning parts seen at the wheels, for longitudinal accel only
+        return self.mass_total + 4 * (self.J_motor * self.gear_ratio**2 + self.J_wheel) / self.tire_radius**2
 
     # ── Tires ──────────────────────────────────────────────────
     
     camber_front:       float = 0    # deg  front camber angle
     camber_rear:        float = 0    # deg  rear camber angle
-    tire_radius:        float = 0.2032  # m  loaded radius
+    tire_radius:        float = 0.198  # m  loaded radius
     tire_pressure:      float = 13      # psi tire pressure hot
     slip_peak:          float = 7.0     # deg  slip angle at peak lateral force (Fy)
 
@@ -69,26 +76,28 @@ class MFE27:
     
     @property
     def CDA(self):
-        return self.CD * self.ref_area
+        return 1.5
+        #return self.CD * self.ref_area
 
 
     # ── Powertrain ────────────────────────────────────────────
     motor_type:            str   = "Fisher"    # "AMK" or "Fisher"
     power_cap:             float = 80_000   # W   total system peak power
-    torque_cap:            float = 29        # torque cap of motor [Nm]
+    torque_cap:            float = 21        # torque cap of motor [Nm]
     torque_split:          float = 0.50     # fraction of torque to front (AWD)
     inverter_efficiency:   float = 0.98     # fraction of power delivered to motor
-    rpm_cap:               float = 20_000   # rpm  cap of the motor 
+    rpm_cap:               float = 19_000   # rpm  cap of the motor 
     torque_scale:          float = 1.0      # fraction of rated torque actually delivered (correlation)
-
+    efficiency_scale:      float = 0.95     # pack to shaft correction from accel.mat (0.82 measured vs 0.873 sim)
+    
     drivetrain:            str   = "AWD"    # "AWD"  "RWD"  "FWD"
-    gear_ratio:            float = 15    # final drive ratio
-    regen:                 bool = True      # True if regen braking is enabled
+    gear_ratio:            float = 13.39    # final drive ratio
+    regen:                 bool = False      # True if regen braking is enabled
     max_regen_torque:      float = 10       # Nm  at motor
     
     def __post_init__(self):
-        # motor efficiency map, 2D
-        m = loadmat(DATA/ self.motor_type / (self.motor_type + "_Efficiency.mat"))
+        # motor efficiency map, 2D, efficiency as a FRACTION
+        m = loadmat(DATA/ self.motor_type / (self.motor_type + "_Efficiency_Fraction.mat"))
         self.eta_torque = np.squeeze(m["Torque"]).astype(float)      # (12,)   [Nm]
         self.eta_rpm    = np.squeeze(m["RPM"]).astype(float)         # (11,)   [rpm]
         self.eta_map    = np.asarray(m["Efficiency"], dtype=float)   # (12,11) rows=torque, cols=rpm

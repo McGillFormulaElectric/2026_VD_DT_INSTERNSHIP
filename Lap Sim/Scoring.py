@@ -5,7 +5,7 @@ class Scoring:
     
     @staticmethod   
     def getAccelScore(t_your):
-        t_min = 3.7 #3.94838  # [s] Michigan 2026
+        t_min = 3.70  # [s] Michigan 2026
         t_max = t_min * 1.5
 
         if t_your < t_max:
@@ -31,7 +31,7 @@ class Scoring:
     
     @staticmethod
     def getEnduranceScore(t_your):
-        t_min = 1148 #1420.853  # [s] Michigan 2026
+        t_min = 1290 #1420.853  # [s] Michigan 2026
         t_max = t_min * 1.45
 
         if t_your < t_max:
@@ -60,9 +60,9 @@ class Scoring:
         # t_your    = your event time
         # co2your   = mass of CO2 used by your car
 
-        t_min = 1420.853            # [s] Michigan 2026 endurance benchmark
+        t_min = 1290            # [s] Michigan 2026 endurance benchmark
         co2_min = 1.591             # [kg] smallest CO2 of any competitor, Michigan 2026
-        t_co2min = 1872.046         # [s] endurance time of the lowest-CO2 competitor, Michigan 2026
+        t_co2min = t_min * 1872.046 / 1581.258 #t_co2min = 1872.046         # [s] endurance time of the lowest-CO2 competitor, Michigan 2026
         conversion_factor = 0.65    # [kgCO2/kWh] Electric
         co2your = energy * conversion_factor
         t_max = t_min * 1.45

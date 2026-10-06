@@ -48,7 +48,7 @@ def tractive_force_4wd(tire, car, FzFL, FzFR, FzRL, FzRR, v):
         k = round(t, 2)
         e = eta_cache.get(k)
         if e is None:
-            e = ph.motor_eff(car, rpm, t)
+            e = ph.motor_eff(car, rpm, t) * car.efficiency_scale   # correlated against accel.mat
             eta_cache[k] = e
         return e
 
@@ -64,11 +64,14 @@ def tractive_force_4wd(tire, car, FzFL, FzFR, FzRL, FzRR, v):
 
     Fx, T, eta, P_pack = demand(1.0)
 
-    if P_pack > car.power_cap:                                 # too much, back it off
-        lam = 1.0
+    if P_pack > car.power_cap:
+        Fx0 = Fx                                               # forces after grip clipping
+        scale = 1.0
         for _ in range(4):
-            lam *= car.power_cap / P_pack          # nudge lam by the current error ratio
-            Fx, T, eta, P_pack = demand(lam, etas=eta)   # eta ~constant as lam trims torque
+            scale *= car.power_cap / P_pack                    # nudge by the current error ratio
+            Fx = [f * scale for f in Fx0]
+            T = [ph.motor_torque(car, f) for f in Fx]
+            P_pack = ph.pack_power(car, T, eta, rpm)           # eta ~constant as torque is trimmed
             if abs(P_pack - car.power_cap) < 0.005 * car.power_cap:
                 break
 
@@ -117,7 +120,7 @@ def corner_speed(tire, car, R, AxG=0.0):
 
         # Friction ellipse. 
         if AxG != 0.0:
-            AxG_cap = sum(tire.peak(f)[0] for f in Fz) / (car.mass_total * car.g)
+            AxG_cap = sum(tire.peak(f)[0] for f in Fz) / (car.mass_effective * car.g)
             inner = 1.0 - (AxG / AxG_cap)**2
             if inner <= 0.0:
                 return False                          # all grip spent longitudinally

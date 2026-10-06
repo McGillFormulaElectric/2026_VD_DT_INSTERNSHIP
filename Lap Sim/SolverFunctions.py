@@ -39,7 +39,7 @@ def braking_decel(car, tire, v, v_max, k=0.0, ax_prev=0.0):
     F_resist = (ph.drag(car, v)
                 + ph.rolling_resistance(car, v, car.mass_total*car.g + DF)
                 + ph.cornering_drag(car, ay, utilisation))                              # induced drag helps braking
-    return min((F_tire + F_resist) / car.mass_total, car.max_decel)
+    return min((F_tire + F_resist) / car.mass_effective, car.max_decel)
 
 
 def ellipse(v, v_max):
@@ -50,16 +50,17 @@ def ellipse(v, v_max):
     return np.sqrt(max(0.0, 1.0 - r**4))
 
 
-def forward_pass(track, car, tire, v_max, v0, n_loops=1, closed=True):
+def forward_pass(track, car, tire, v_max, v0, n_loops=1, closed=True, torque_profile=None):
     """March forward: accelerate as hard as traction allows, capped by v_max.
     closed=True wraps around the lap (flying lap, start speed converges over
     n_loops). closed=False is a standing start: v begins at v0 and never wraps."""
     n = len(v_max)
     v = np.minimum(np.full(n, v0), v_max)
+    v_rev = ph.vehicle_speed(car, car.rpm_cap)     # top speed at the rev limiter  # <- rev limit
     for _ in range(n_loops):
         ax_prev = 0.0                              # load transfer, lagged one step
         for i in range(n - 1):
-            vi = min(v[i], v_max[i])
+            vi = min(v[i], v_max[i], v_rev)                                         # <- rev limit
             DF = ph.downforce(car, vi)
             ay = vi**2 * abs(track.k[i])
             utilisation = (vi / max(v_max[i], 1e-9))**2
@@ -69,13 +70,15 @@ def forward_pass(track, car, tire, v_max, v0, n_loops=1, closed=True):
             FzRR = max(ph.RR_Fz(car, DF, ay, ax_prev), 0.0)
             r = Limits.tractive_force_4wd(tire, car, FzFL, FzFR, FzRL, FzRR, max(vi, 0.1))
             F_trac = r["Fx_total"] * ellipse(vi, v_max[i])
+            if torque_profile is not None:
+                F_trac = min(F_trac, ph.wheel_force(car, torque_profile[i]))   # driver-limited, measured torque
             F_net = (F_trac
                      - ph.drag(car, vi)
                      - ph.rolling_resistance(car, vi, car.mass_total*car.g + DF)
                      - ph.cornering_drag(car, ay, utilisation))
-            ax = F_net / car.mass_total
+            ax = F_net / car.mass_effective
             ax_prev = ax
-            v[i + 1] = min(np.sqrt(max(vi**2 + 2 * ax * track.ds, 0.01)), v_max[i + 1])
+            v[i + 1] = min(np.sqrt(max(vi**2 + 2 * ax * track.ds, 0.01)), v_max[i + 1], v_rev)   # <- rev limit
         if closed:
             v[0] = v[-1]                           # wrap for flying laps
         else:
@@ -101,7 +104,7 @@ def backward_pass(track, car, tire, v_max, n_loops=1, closed=True):
     return v
 
 
-def energy_and_time(track, car, tire, v):
+def energy_and_time(track, car, tire, v, v_max):
     """Integrate lap time and battery energy over the final speed profile."""
     n = len(v)
     dt = track.ds / np.maximum(v, 0.1)
@@ -113,28 +116,27 @@ def energy_and_time(track, car, tire, v):
         DF = ph.downforce(car, vi)
         ax = (v[i + 1]**2 - v[i]**2) / (2 * track.ds)
         ay = vi**2 * abs(track.k[i])
-        util = (vi / max(v[i], 1e-9))**2
+        util = (vi / max(v_max[i], 1e-9))**2          # lateral grip used, same as forward_pass
         F_resist = (ph.drag(car, vi)
                     + ph.rolling_resistance(car, vi, car.mass_total*car.g + DF)
                     + ph.cornering_drag(car, ay, util))
-        F_prop = car.mass_total * ax + F_resist    # force the powertrain must supply
-        if F_prop > 0:                             # driving (braking energy: regen TODO)
-            T = ph.motor_torque(car, F_prop / 4)   # per motor
+        F_prop = car.mass_effective * ax + F_resist    # force the powertrain must supply
+        if F_prop > 0:                                 # driving (braking energy: regen TODO)
+            T = ph.motor_torque(car, F_prop / 4)       # per motor
             rpm = ph.motor_rpm(car, vi)
-            eta = ph.motor_eff(car, rpm, T)
+            eta = ph.motor_eff(car, rpm, T) * car.efficiency_scale   # same correction as tractive_force_4wd
             P_pack[i] = ph.pack_power(car, [T] * 4, [eta] * 4, rpm)
     energy_J = float(np.sum(P_pack[:-1] * dt[:-1]))
     return t, P_pack, energy_J
 
 
-
-def lap_profile(track, car, tire, v_max, standing_start):
+def lap_profile(track, car, tire, v_max, standing_start, torque_profile=None):
     """One lap's speed profile. standing_start=True: v0=0, open ends.
     standing_start=False: flying lap, wrapped until converged."""
     if standing_start:
         v_fwd = forward_pass(track, car, tire, v_max, v0=0.1, n_loops=1, closed=False)
         v_bwd = backward_pass(track, car, tire, v_max, n_loops=1, closed=False)
     else:
-        v_fwd = forward_pass(track, car, tire, v_max, v0=v_max[0], n_loops=2, closed=True)
+        v_fwd = forward_pass(track, car, tire, v_max, v0=v_max[0], n_loops=2, closed=True, torque_profile=torque_profile)
         v_bwd = backward_pass(track, car, tire, v_max, n_loops=2, closed=True)
     return np.minimum(v_fwd, v_bwd), v_fwd, v_bwd

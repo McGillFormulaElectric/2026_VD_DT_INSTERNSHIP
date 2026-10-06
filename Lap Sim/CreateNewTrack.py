@@ -7,13 +7,13 @@ sys.path.insert(0, str(CORE))
 from MotecData import MotecData
 from TrackMap import TrackMap, saveTrack
 
-DATA = CORE / "Data"
+DATA = CORE / "1. Data"
 
-"""
+
 # build a track from a Motec log and save it
-motec = MotecData(DATA / "Motec"/ "MotecData.mat")
-track = TrackMap(motec).createTrack(event="autocross", n_apex=15)
-saveTrack(track, DATA / "Track")
+motec = MotecData(DATA / "Motec"/ "autocross.mat")
+track = TrackMap(motec, name="autocrossID16").createTrack(event="autocross", n_apex=25, curvature="car")
+saveTrack(track, DATA / "Track", name="autocrossID16")
 
 print("event      :", track.event)
 print("lap length :", round(track.lap_length, 1), "m")
@@ -25,6 +25,3 @@ plt.plot(track.x, track.y, "-")
 plt.plot(track.x[track.apex], track.y[track.apex], "ro")
 plt.axis("equal")
 plt.show()
-"""
-
-track = TrackMap()

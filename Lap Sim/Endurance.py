@@ -17,11 +17,11 @@ def solve(track, car, tire, v_max=None):
         v_max = corner_speed_ceiling(track, car, tire)
 
     v1, _, _ = lap_profile(track, car, tire, v_max, standing_start=True)
-    t1, P1, E1 = energy_and_time(track, car, tire, v1)
+    t1, P1, E1 = energy_and_time(track, car, tire, v1, v_max)
     first_lap = t1[-1] + track.ds / max(v1[-1], 0.1)
 
     v, v_fwd, v_bwd = lap_profile(track, car, tire, v_max, standing_start=False)
-    t, P_pack, E = energy_and_time(track, car, tire, v)
+    t, P_pack, E = energy_and_time(track, car, tire, v, v_max)
     flying_lap = t[-1] + track.ds / max(v[-1], 0.1)
 
     n_laps = track.n_laps

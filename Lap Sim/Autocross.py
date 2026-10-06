@@ -13,7 +13,7 @@ def solve(track, car, tire, v_max=None):
     if v_max is None:
         v_max = corner_speed_ceiling(track, car, tire)
     v, v_fwd, v_bwd = lap_profile(track, car, tire, v_max, standing_start=True)
-    t, P_pack, energy_J = energy_and_time(track, car, tire, v)
+    t, P_pack, energy_J = energy_and_time(track, car, tire, v, v_max)
     lap_time = t[-1] + track.ds / max(v[-1], 0.1)
     ax_score = Scoring.getAutocrossScore(lap_time)
     return {"event": "autocross", "s": track.s, "v": v, "v_max": v_max,
