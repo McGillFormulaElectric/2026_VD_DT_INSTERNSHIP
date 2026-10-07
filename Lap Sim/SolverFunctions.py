@@ -38,7 +38,7 @@ def braking_decel(car, tire, v, v_max, k=0.0, ax_prev=0.0):
     F_tire = ph.brake_force_limit(front_grip, rear_grip, car.brake_bias_front)   # was: sum of all four
     F_resist = (ph.drag(car, v)
                 + ph.rolling_resistance(car, v, car.mass_total*car.g + DF)
-                + ph.cornering_drag(car, ay, utilisation))                              # induced drag helps braking
+                + ph.cornering_drag(car, ay, utilisation, tire.slip_peak))                              # induced drag helps braking
     return min((F_tire + F_resist) / car.mass_effective, car.max_decel)
 
 
@@ -75,7 +75,7 @@ def forward_pass(track, car, tire, v_max, v0, n_loops=1, closed=True, torque_pro
             F_net = (F_trac
                      - ph.drag(car, vi)
                      - ph.rolling_resistance(car, vi, car.mass_total*car.g + DF)
-                     - ph.cornering_drag(car, ay, utilisation))
+                     - ph.cornering_drag(car, ay, utilisation, tire.peak_slip_angle()))
             ax = F_net / car.mass_effective
             ax_prev = ax
             v[i + 1] = min(np.sqrt(max(vi**2 + 2 * ax * track.ds, 0.01)), v_max[i + 1], v_rev)   # <- rev limit
@@ -119,7 +119,7 @@ def energy_and_time(track, car, tire, v, v_max):
         util = (vi / max(v_max[i], 1e-9))**2          # lateral grip used, same as forward_pass
         F_resist = (ph.drag(car, vi)
                     + ph.rolling_resistance(car, vi, car.mass_total*car.g + DF)
-                    + ph.cornering_drag(car, ay, util))
+                    + ph.cornering_drag(car, ay, util, tire.slip_peak))   # induced drag helps braking
         F_prop = car.mass_effective * ax + F_resist    # force the powertrain must supply
         if F_prop > 0:                                 # driving (braking energy: regen TODO)
             T = ph.motor_torque(car, F_prop / 4)       # per motor

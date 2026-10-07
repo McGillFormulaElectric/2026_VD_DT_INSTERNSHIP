@@ -1,9 +1,15 @@
+import sys
 from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
+
+# Path to the Lap Sim folder, so we can import MotecData.py
+LAPSIM_ROOT = Path(__file__).resolve().parents[1]   # folder that holds MotecData.py
+sys.path.insert(0, str(LAPSIM_ROOT))
+
 from MotecData import MotecData
 
 G = 9.81
@@ -11,7 +17,6 @@ REF = 647.1                         # motor rpm per m/s when free rolling, from 
 SPEED_BINS = [18, 21, 24, 27, 29]   # m/s, accel is averaged in each bin for the sim target
 
 # load accel run
-LAPSIM_ROOT = Path(__file__).resolve().parents[0]
 data = MotecData(LAPSIM_ROOT / "1. Data" / "Motec" / "accel.mat")
 
 time = data.getTime("velX")
@@ -102,15 +107,13 @@ plt.tight_layout()
 plt.show()
 
 #-------------------------------------------------------------
-from pathlib import Path
-from CarProperties import MFE27
+from CarProperties import MFE26
 from Tire import Tire
 from Acceleration import AccelSolver
 
-LAPSIM_ROOT = Path(__file__).resolve().parents[0]
 TIRE_DIR = LAPSIM_ROOT / "1. Data" / "Tire"
 
-car = MFE27()
+car = MFE26()
 tire = Tire(TIRE_DIR / "MF61_Parameters.mat", TIRE_DIR / "FZ_Reference.mat", muxScale=0.451, muyScale=0.59)
 
 accel = AccelSolver().simulate(tire, car)

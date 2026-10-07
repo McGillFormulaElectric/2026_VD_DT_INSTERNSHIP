@@ -104,11 +104,13 @@ def corner_speed(tire, car, R, AxG=0.0):
 
     # Power to hold the speed
     def power_fits(v):
+        Ay = v**2 / R
         DF = ph.downforce(car, v)
-        Fx = ph.drag(car, v) + ph.rolling_resistance(car, v, car.mass_total * car.g + DF)
+        Fx = (ph.drag(car, v) + ph.rolling_resistance(car, v, car.mass_total * car.g + DF)
+              + ph.cornering_drag(car, Ay, 1.0, tire.slip_peak))   # tyres at the limit run at slip_peak
         T = ph.motor_torque(car, Fx/4)                # even split in a steady corner
         rpm = ph.motor_rpm(car, v)
-        eta = ph.motor_eff(car, rpm, T)               # look up once
+        eta = ph.motor_eff(car, rpm, T) * car.efficiency_scale   # same correction as tractive_force_4wd
         return ph.pack_power(car, [T]*4, [eta]*4, rpm) <= car.power_cap   # reuse it
 
     # Grip 
@@ -126,7 +128,10 @@ def corner_speed(tire, car, R, AxG=0.0):
                 return False                          # all grip spent longitudinally
             AyG_cap *= np.sqrt(inner)
 
-        return AyG_cap >= Ay/car.g                       # capacity >= demand
+        # aero side force carries part of the lateral load, so the tyres need less
+        # added after the friction ellipse: it does not use tyre grip
+        side_G = ph.sideforce(car, v) / (car.mass_total * car.g)
+        return AyG_cap + side_G >= Ay/car.g   
 
     def bisect(fits, hi):
         if fits(hi):
@@ -150,10 +155,11 @@ def corner_speed(tire, car, R, AxG=0.0):
     DF = ph.downforce(car, v)
     Fz = np.clip([ph.FL_Fz(car, DF, Ay, AxG * car.g), ph.FR_Fz(car, DF, Ay, AxG * car.g), ph.RL_Fz(car, DF, Ay, AxG * car.g), ph.RR_Fz(car, DF, Ay, AxG * car.g)], 0.0, None)
 
-    Fx  = ph.drag(car, v) + ph.rolling_resistance(car, v, car.mass_total * car.g + DF)
+    Fx  = (ph.drag(car, v) + ph.rolling_resistance(car, v, car.mass_total * car.g + DF)
+           + ph.cornering_drag(car, Ay, 1.0, tire.slip_peak))     # tyres at the limit run at slip_peak
     T   = ph.motor_torque(car, Fx / 4)               # even split in a steady corner
     rpm = ph.motor_rpm(car, v)
-    eta = ph.motor_eff(car, rpm, T)
+    eta = ph.motor_eff(car, rpm, T) * car.efficiency_scale       # same correction as tractive_force_4wd
     P_pack = ph.pack_power(car, [T]*4, [eta]*4, rpm)  # steady power to hold the corner [W]
     
     return {

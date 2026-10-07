@@ -1,10 +1,14 @@
+import sys
 from pathlib import Path
 import numpy as np
-from CarProperties import MFE27
+
+# Path to the Lap Sim folder, so we can import MotecData.py
+LAPSIM_ROOT = Path(__file__).resolve().parents[1]   # folder that holds MotecData.py
+sys.path.insert(0, str(LAPSIM_ROOT))
+
+from CarProperties import MFE26
 from Tire import Tire
 from SolverFunctions import braking_decel
-
-G = 9.81
 
 # target from BrakeCorrelation.py, brake.mat, 8 to 14 m/s window, all 5 checks GOOD
 # low speed on purpose: drag is ~0.04 g here, so the sim CdA error moves the result ~1 %
@@ -12,11 +16,10 @@ DECEL_TARGET = 0.928   # g
 V_TARGET = 11.0        # m/s, average speed in the window
 
 # tyre fit files
-LAPSIM_ROOT = Path(__file__).resolve().parents[0]   # script sits in Lap Sim root
 TIRE_DIR = LAPSIM_ROOT / "1. Data" / "Tire"
 
 # car and tire, muyScale already correlated on skidpad
-car = MFE27()
+car = MFE26()
 tire = Tire(TIRE_DIR / "MF61_Parameters.mat", TIRE_DIR / "FZ_Reference.mat", muyScale=0.59)
 
 # scale mux until sim braking decel is within 1 % of target
@@ -25,13 +28,13 @@ for i in range(5):
     dec = 0.0
     for j in range(10):
         dec = braking_decel(car, tire, V_TARGET, 1e3, k=0.0, ax_prev=-dec)   # 1e3 = no corner speed limit, straight line
-    dec_sim = dec / G
+    dec_sim = dec / car.g
     error = (dec_sim - DECEL_TARGET) / DECEL_TARGET * 100
 
     print(f"iter {i}: muxScale = {tire.muxScale:.4f}  decel_sim = {dec_sim:.3f} g  error = {error:+.2f} %")
 
     if np.isclose(dec, car.max_decel):
-        print(f"\nSTOP: sim is capped by car.max_decel = {car.max_decel / G:.3f} g, raise it in CarProperties")
+        print(f"\nSTOP: sim is capped by car.max_decel = {car.max_decel / car.g:.3f} g, raise it in CarProperties")
         break
 
     if abs(error) < 1:

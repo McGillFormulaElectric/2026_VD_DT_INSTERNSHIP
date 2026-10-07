@@ -1,20 +1,27 @@
+import sys
 from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
+
+# Path to the Lap Sim folder, so we can import MotecData.py
+LAPSIM_ROOT = Path(__file__).resolve().parents[1]   # folder that holds MotecData.py
+sys.path.insert(0, str(LAPSIM_ROOT))
+
 from MotecData import MotecData
 from TrackMap import loadTrack
-from CarProperties import MFE27
+from CarProperties import MFE26
 from Tire import Tire
 from SolverFunctions import corner_speed_ceiling, lap_profile, energy_and_time   # same steps endurance uses for lap 2
 
-G = 9.81
 APEX_WINDOW = 5.0   # m, search window around each apex for the minimum speed
 
-LAPSIM_ROOT = Path(__file__).resolve().parents[0]
 TIRE_DIR = LAPSIM_ROOT / "1. Data" / "Tire"
+
+car = MFE26()
+tire = Tire(TIRE_DIR / "MF61_Parameters.mat", TIRE_DIR / "FZ_Reference.mat")   # correlated defaults in Tire.py
 
 # ── measured lap ──────────────────────────────────────────────
 data = MotecData(LAPSIM_ROOT / "1. Data" / "Motec" / "autocross.mat")
@@ -27,7 +34,7 @@ torque_meas = (data.getValue("TorqueActualFL") + data.getValue("TorqueActualFR")
 dt = np.mean(np.diff(time))
 
 V_meas = savgol_filter(np.sqrt(velX**2 + velY**2), 31, 2)
-ax_meas = np.gradient(V_meas, dt) / G       # g, + accelerating
+ax_meas = np.gradient(V_meas, dt) / car.g       # g, + accelerating
 dist_meas = np.cumsum(V_meas) * dt
 dist_meas = dist_meas - dist_meas[0]
 t_meas = time - time[0]
@@ -37,11 +44,6 @@ track = loadTrack(LAPSIM_ROOT / "1. Data" / "Track", "autocrossID16")
 print(f"track: {track.lap_length:.1f} m, {len(track.apex)} apexes, tightest R = {1 / np.max(np.abs(track.k)):.1f} m")
 print("       (expect about 336 m, 25 apexes, R about 4.7 m)")
 print()
-
-# ── sim: flying lap, built the same way endurance builds lap 2, like the logged lap
-#         run twice: full torque, and capped at the torque the driver used
-car = MFE27()
-tire = Tire(TIRE_DIR / "MF61_Parameters.mat", TIRE_DIR / "FZ_Reference.mat")   # correlated defaults in Tire.py
 
 torque_profile = np.interp(track.s, dist_meas, torque_meas)   # measured torque on the track grid
 v_max = corner_speed_ceiling(track, car, tire)                # grip limit, computed once for both runs
@@ -70,7 +72,7 @@ v_sim = np.asarray(sim["v"])
 t_sim = np.asarray(sim["t"])
 v_limit = np.asarray(sim["v_max"])          # corner speed limit from grip
 P_sim = np.asarray(sim["P_pack"]) / 1000    # kW, solver returns W
-ax_sim = v_sim * np.gradient(v_sim, s_sim) / G   # g, a = v dv/ds
+ax_sim = v_sim * np.gradient(v_sim, s_sim) / car.g   # g, a = v dv/ds
 v_free = np.asarray(sim_free["v"])
 
 # put the sim on the measured distance so both can be compared point by point

@@ -145,7 +145,8 @@ class Tire:
         self.lat_table = np.zeros(self.n_grid)
         for i, Fz in enumerate(self.Fz_grid):
             self.drive_table[i], self.brake_table[i], self.lat_table[i] = self.grip(Fz, self.build_camber)
-
+        self.slip_peak = self.peak_slip_angle()
+        
     def peak(self, Fz):
         # peak (drive, brake, lateral) force [N] at load Fz, from the table. This is what the sim calls.
         # careful: above Fz_max the table holds the last value flat, keep wheel loads under Fz_max

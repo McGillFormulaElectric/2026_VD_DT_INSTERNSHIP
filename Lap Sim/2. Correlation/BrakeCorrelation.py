@@ -1,16 +1,21 @@
+import sys
 from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
+
+# Path to the Lap Sim folder, so we can import MotecData.py
+LAPSIM_ROOT = Path(__file__).resolve().parents[1]   # folder that holds MotecData.py
+sys.path.insert(0, str(LAPSIM_ROOT))
+
 from MotecData import MotecData
 
 G = 9.81
 V_LOW, V_HIGH = 8.0, 14.0   # m/s, target window, low speed so drag is small
 
 # load brake run
-LAPSIM_ROOT = Path(__file__).resolve().parents[0]
 data = MotecData(LAPSIM_ROOT / "1. Data" / "Motec" / "brake.mat")
 
 time = data.getTime("velX")

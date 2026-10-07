@@ -1,15 +1,23 @@
+# Author: Anne-So
+# Summary : Correlation of the skidpad event, using the Motec data to set the target lateral acceleration and radius.
+
+import sys
 from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from scipy.signal import butter, filtfilt
+
+# Path to the Lap Sim folder, so we can import MotecData.py
+LAPSIM_ROOT = Path(__file__).resolve().parents[1]   # folder that holds MotecData.py
+sys.path.insert(0, str(LAPSIM_ROOT))
+
 from MotecData import MotecData
 
 G = 9.81
 
 # load skidpad run
-LAPSIM_ROOT = Path(__file__).resolve().parents[0]
 data = MotecData(LAPSIM_ROOT / "1. Data" / "Motec" / "skidpad4.mat")
 
 time = data.getTime("velX")

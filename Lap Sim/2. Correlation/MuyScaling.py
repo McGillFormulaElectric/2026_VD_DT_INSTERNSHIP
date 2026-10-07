@@ -1,10 +1,13 @@
+import sys
 from pathlib import Path
-import numpy as np
-from CarProperties import MFE27
+
+# Path to the Lap Sim folder, so we can import MotecData.py
+LAPSIM_ROOT = Path(__file__).resolve().parents[1]   # folder that holds MotecData.py
+sys.path.insert(0, str(LAPSIM_ROOT))
+
+from CarProperties import MFE26
 from Tire import Tire
 from SkidPad import SkidPadSolver
-
-G = 9.81
 
 # target from SkidPadCorrelation.py, skidpad1 second half
 AY_TARGET = 1.347   # g
@@ -12,11 +15,10 @@ R_TARGET = 9.66     # m
 V_TARGET = 40.6     # km/h, only to compare
 
 # tyre fit files
-LAPSIM_ROOT = Path(__file__).resolve().parents[0]   # script sits in Lap Sim root
 TIRE_DIR = LAPSIM_ROOT / "1. Data" / "Tire"
 
 # car, tire and solver at the measured radius
-car = MFE27()
+car = MFE26()
 tire = Tire(TIRE_DIR / "MF61_Parameters.mat", TIRE_DIR / "FZ_Reference.mat")
 solver = SkidPadSolver(path_radius=R_TARGET)
 
@@ -24,7 +26,7 @@ solver = SkidPadSolver(path_radius=R_TARGET)
 for i in range(5):
     out = solver.simulate(tire, car)
     V_sim = out["v"]                            # m/s
-    ay_sim = V_sim**2 / R_TARGET / G            # g
+    ay_sim = V_sim**2 / R_TARGET / car.g        # g
     error = (ay_sim - AY_TARGET) / AY_TARGET * 100
 
     print(f"iter {i}: muyScale = {tire.muyScale:.4f}  ay_sim = {ay_sim:.3f} g  "

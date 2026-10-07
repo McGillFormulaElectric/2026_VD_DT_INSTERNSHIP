@@ -1,9 +1,15 @@
+import sys
 from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
+
+# Path to the Lap Sim folder, so we can import MotecData.py
+LAPSIM_ROOT = Path(__file__).resolve().parents[1]   # folder that holds MotecData.py
+sys.path.insert(0, str(LAPSIM_ROOT))
+
 from MotecData import MotecData
 
 G = 9.81
@@ -12,7 +18,6 @@ POWER_CAP = 80.0     # kW
 SPIN = 0.20          # slip above this = wheelspin
 
 # load autocross lap
-LAPSIM_ROOT = Path(__file__).resolve().parents[0]
 data = MotecData(LAPSIM_ROOT / "1. Data" / "Motec" / "autocross.mat")
 
 time = data.getTime("velX")

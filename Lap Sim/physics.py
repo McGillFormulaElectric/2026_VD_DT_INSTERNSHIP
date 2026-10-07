@@ -53,19 +53,19 @@ def RL_LLT(LLT_total, LLTD):
 
 def FL_Fz(car, downforce, Ay, Ax):
     """Returns the front left vertical load (N) at a given normal load (N) and accelerations (m/s^2)"""
-    return (car.mass_total * car.g * car.CGx) / 2 + (downforce * car.aero_balance) / 2 + front_long_LT(long_LT_total(car, Ax)) + FL_LLT(LLT_total(car, Ay), car.lltd)
+    return (car.mass_total * car.g * car.CGx) / 2 + (downforce * car.aero_balance) / 2 + front_long_LT(long_LT_total(car, Ax)) + FL_LLT(LLT_total(car, Ay), car.lltd) - aero_pitch_LT(car, downforce) / 2
 
 def FR_Fz(car, downforce, Ay, Ax):
     """Returns the front right vertical load (N) at a given normal load (N) and accelerations (m/s^2)"""
-    return (car.mass_total * car.g * car.CGx) / 2 + (downforce * car.aero_balance) / 2 + front_long_LT(long_LT_total(car, Ax)) + FR_LLT(LLT_total(car, Ay), car.lltd)
+    return (car.mass_total * car.g * car.CGx) / 2 + (downforce * car.aero_balance) / 2 + front_long_LT(long_LT_total(car, Ax)) + FR_LLT(LLT_total(car, Ay), car.lltd) - aero_pitch_LT(car, downforce) / 2
 
 def RL_Fz(car, downforce, Ay, Ax):
     """Returns the rear left vertical load (N) at a given normal load (N) and accelerations (m/s^2)"""
-    return (car.mass_total * car.g * (1 - car.CGx)) / 2 + (downforce * (1 - car.aero_balance)) / 2 + rear_long_LT(long_LT_total(car, Ax)) + RL_LLT(LLT_total(car, Ay), car.lltd)
+    return (car.mass_total * car.g * (1 - car.CGx)) / 2 + (downforce * (1 - car.aero_balance)) / 2 + rear_long_LT(long_LT_total(car, Ax)) + RL_LLT(LLT_total(car, Ay), car.lltd) + aero_pitch_LT(car, downforce) / 2
 
 def RR_Fz(car, downforce, Ay, Ax):
     """Returns the rear right vertical load (N) at a given normal load (N) and accelerations (m/s^2)"""
-    return (car.mass_total * car.g * (1 - car.CGx)) / 2 + (downforce * (1 - car.aero_balance)) / 2 + rear_long_LT(long_LT_total(car, Ax)) + RR_LLT(LLT_total(car, Ay), car.lltd)
+    return (car.mass_total * car.g * (1 - car.CGx)) / 2 + (downforce * (1 - car.aero_balance)) / 2 + rear_long_LT(long_LT_total(car, Ax)) + RR_LLT(LLT_total(car, Ay), car.lltd) + aero_pitch_LT(car, downforce) / 2
 
 # ── Aero ──────────────────────────────────────────────────
 
@@ -77,7 +77,14 @@ def drag(car, v):
     """Returns the drag force (N) at a given speed (m/s)"""
     return 0.5 * car.air_density * car.CDA * v**2
 
-#sideforce
+def sideforce(car, v, utilisation=1.0):
+    """Returns the aero side force (N), pushing toward the inside of the corner."""
+    return 0.5 * car.air_density * car.CSA * v**2 * min(max(utilisation, 0.0), 1.0)
+
+def aero_pitch_LT(car, downforce):
+    """Returns the load (N) moved from front to rear axle by drag acting at cop_z above the ground."""
+    drag_force = downforce * car.CDA / car.CLA
+    return drag_force * car.cop_z / car.wheelbase
 
 # ── PowerTrain ──────────────────────────────────────────────────
 
@@ -124,9 +131,9 @@ def wheel_force(car, T):
 
 # ── Cornering (induced) drag ───────────────────────────────
 
-def cornering_drag(car, Ay, utilisation):
+def cornering_drag(car, Ay, utilisation, slip_peak):
     """Returns the induced 'tyre' drag (N) from carrying lateral force Ay (m/s^2) at a slip angle that grows with lateral utilisation util (0 to 1)"""
-    slip = np.radians(car.slip_peak) * min(max(utilisation, 0.0), 1.0)
+    slip = np.radians(slip_peak) * min(max(utilisation, 0.0), 1.0)
     return abs(car.mass_total * Ay) * np.sin(slip)
 
 # ── Braking ────────────────────────────────────────────────
