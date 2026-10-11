@@ -1,7 +1,4 @@
-# Author: Ludih
-# Summary: This script is used to define the properties of the car used as inputs in the Lap Sim.
-
-from dataclasses import dataclass #Dataclasses allows us to sweep through paramters easily
+from dataclasses import dataclass
 from scipy.io import loadmat
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
@@ -11,25 +8,22 @@ DATA = Path(__file__).parent / "1. Data" / "PowerTrain_mat"
 
 @dataclass
 class MFE26:
-
     # ── Geometry ──────────────────────────────────────────────
     wheelbase:          float = 1.525   # m
     track:              float = 1.150   # m
     lltd:               float = 0.474   # m  lateral load transfer distribution (front)
     CG_height:          float = 0.286   # m
-    CGx:                float = 0.44    # fraction of total weight on front axle
-
+    CGx:                float = 0.4437    # fraction of total weight on front axle
     # ── Mass ──────────────────────────────────────────────────
     mass_battery:       float = 46.0  # kg  battery pack mass 
     mass_driver:        float = 70.0  # kg  driver mass
     mass_aero:          float = 16.0  # kg  aerodynamic mass
     mass_unsprung_f:    float = 32.0  # kg  unsprung mass (front)
     mass_unsprung_r:    float = 32.0  # kg  unsprung mass (rear)
-    mass_no_driver:     float = 185.0 # kg  total mass without driver
+    mass_no_driver:     float = 203.0 # kg  total mass without driver
     J_motor:            float = 0.000274  # kg m²  rotor inertia per motor, check the AMK datasheet
     J_wheel:            float = 0.10      # kg m²  wheel + tyre + hub per corner, estimate or measure
-
-
+    
     @property
     def mass_total(self):  # kg  total mass of the car with driver
         return self.mass_no_driver + self.mass_driver
@@ -49,35 +43,22 @@ class MFE26:
     @property
     def mass_effective(self):  # kg  mass + spinning parts seen at the wheels, for longitudinal accel only
         return self.mass_total + 4 * (self.J_motor * self.gear_ratio**2 + self.J_wheel) / self.tire_radius**2
-
-    # ── Tires ──────────────────────────────────────────────────
     
+    # ── Tires ──────────────────────────────────────────────────
     camber_front:       float = 0    # deg  front camber angle
     camber_rear:        float = 0    # deg  rear camber angle
-    tire_radius:        float = 0.198  # m  loaded radius
+    tire_radius:        float = 0.201  # m  loaded radius
     tire_pressure:      float = 13      # psi tire pressure hot
-
     # ── Suspension ────────────────────────────────────────────
     RC_height_front:         float = 0.0866   # m  front roll center height
     RC_height_rear:          float = 0.13437  # m  rear roll center height
     RC_height_sprung:        float = 0.1100   # m  sprung roll center height
-
     # ── Aero ──────────────────────────────────────────────────
-    CL:                 float = 4.26    # downforce coefficient (positive = down)
-    CD:                 float = 1.77    # drag coefficient
+    CLA:                float = 4.44   # downforce coefficient (positive = down)
+    CDA:                float = 1.5    #1.85   # drag coefficient
     CS:                 float = 0.08    # sideforce coefficient
     ref_area:           float = 1.10    # m²  frontal reference area
     aero_balance:       float = 0.45    # fraction of downforce on front axle
-    cop_z:              float = 0.30    # m  center of pressure height
-
-    @property
-    def CLA(self): # downforce coefficient (positive = down)
-        return self.CL * self.ref_area
-    
-    @property
-    def CDA(self):
-        return 1.5
-        #return self.CD * self.ref_area
     
     @property
     def CSA(self):
@@ -86,16 +67,15 @@ class MFE26:
     # ── Powertrain ────────────────────────────────────────────
     motor_type:            str   = "AMK"    # "AMK" or "Fisher"
     power_cap:             float = 80_000   # W   total system peak power
-    torque_cap:            float = 21        # torque cap of motor [Nm]
+    torque_cap:            float = 21       # torque cap of motor [Nm]
     torque_split:          float = 0.50     # fraction of torque to front (AWD)
     inverter_efficiency:   float = 0.98     # fraction of power delivered to motor
     rpm_cap:               float = 19_000   # rpm  cap of the motor 
     torque_scale:          float = 1.0      # fraction of rated torque actually delivered (correlation)
     efficiency_scale:      float = 0.95     # pack to shaft correction from accel.mat (0.82 measured vs 0.873 sim)
-    
     drivetrain:            str   = "AWD"    # "AWD"  "RWD"  "FWD"
     gear_ratio:            float = 13.39    # final drive ratio
-    regen:                 bool = False      # True if regen braking is enabled
+    regen:                 bool = True      # True if regen braking is enabled
     max_regen_torque:      float = 10       # Nm  at motor
     
     def __post_init__(self):
@@ -112,24 +92,20 @@ class MFE26:
         self.curve_torque = np.squeeze(c["Tmotor"]).astype(float)    # (11,)   [Nm] 
 
     # ── Brakes ────────────────────────────────────────────────
-    max_decel:          float = 18.0    # m/s²  peak braking deceleration
-    brake_bias_front:   float = 0.5    # fraction of brake force on front axle
-
-    
+    max_decel:          float = 25.0    # m/s²  peak braking deceleration
+    brake_bias_front:   float = 0.6    # fraction of brake force on front axle
     # ── Constants ─────────────────────────────────────────────
     air_density:        float = 1.225   # kg/m³
     g:                  float = 9.81    # m/s²
     
 @dataclass
 class MFE27:
-
     # ── Geometry ──────────────────────────────────────────────
     wheelbase:          float = 1.525   # m
     track:              float = 1.150   # m
     lltd:               float = 0.474   # m  lateral load transfer distribution (front)
     CG_height:          float = 0.286   # m
     CGx:                float = 0.44    # fraction of total weight on front axle
-
     # ── Mass ──────────────────────────────────────────────────
     mass_battery:       float = 46.0  # kg  battery pack mass 
     mass_driver:        float = 70.0  # kg  driver mass
@@ -139,7 +115,6 @@ class MFE27:
     mass_no_driver:     float = 185.0 # kg  total mass without driver
     J_motor:            float = 0.00033 # kg m²  rotor inertia per motor, check the AMK datasheet
     J_wheel:            float = 0.10      # kg m²  wheel + tyre + hub per corner, estimate or measure
-
 
     @property
     def mass_total(self):  # kg  total mass of the car with driver
@@ -162,33 +137,20 @@ class MFE27:
         return self.mass_total + 4 * (self.J_motor * self.gear_ratio**2 + self.J_wheel) / self.tire_radius**2
 
     # ── Tires ──────────────────────────────────────────────────
-    
     camber_front:       float = 0    # deg  front camber angle
     camber_rear:        float = 0    # deg  rear camber angle
     tire_radius:        float = 0.198  # m  loaded radius
     tire_pressure:      float = 13      # psi tire pressure hot
-
     # ── Suspension ────────────────────────────────────────────
     RC_height_front:         float = 0.0866   # m  front roll center height
     RC_height_rear:          float = 0.13437  # m  rear roll center height
     RC_height_sprung:        float = 0.1100   # m  sprung roll center height
-
     # ── Aero ──────────────────────────────────────────────────
-    CL:                 float = 4.26    # downforce coefficient (positive = down)
-    CD:                 float = 1.77    # drag coefficient
+    CLA:                float = 4.44    # downforce coefficient (positive = down)
+    CDA:                float = 1.85    # drag coefficient
     CS:                 float = 0.08    # sideforce coefficient
     ref_area:           float = 1.10    # m²  frontal reference area
     aero_balance:       float = 0.45    # fraction of downforce on front axle
-    cop_z:              float = 0.30    # m  center of pressure height
-
-    @property
-    def CLA(self): # downforce coefficient (positive = down)
-        return self.CL * self.ref_area
-    
-    @property
-    def CDA(self):
-        return 1.5
-        #return self.CD * self.ref_area
     
     @property
     def CSA(self):
@@ -203,10 +165,9 @@ class MFE27:
     rpm_cap:               float = 19_000   # rpm  cap of the motor 
     torque_scale:          float = 1.0      # fraction of rated torque actually delivered (correlation)
     efficiency_scale:      float = 0.95     # pack to shaft correction from accel.mat (0.82 measured vs 0.873 sim)
-    
     drivetrain:            str   = "AWD"    # "AWD"  "RWD"  "FWD"
-    gear_ratio:            float = 13.39    # final drive ratio
-    regen:                 bool = False      # True if regen braking is enabled
+    gear_ratio:            float = 12       # final drive ratio
+    regen:                 bool = False     # True if regen braking is enabled
     max_regen_torque:      float = 10       # Nm  at motor
     
     def __post_init__(self):
@@ -223,11 +184,8 @@ class MFE27:
         self.curve_torque = np.squeeze(c["Tmotor"]).astype(float)    # (11,)   [Nm] 
 
     # ── Brakes ────────────────────────────────────────────────
-    max_decel:          float = 18.0    # m/s²  peak braking deceleration
+    max_decel:          float = 28.0    # m/s²  peak braking deceleration
     brake_bias_front:   float = 0.5    # fraction of brake force on front axle
-
-    
     # ── Constants ─────────────────────────────────────────────
     air_density:        float = 1.225   # kg/m³
     g:                  float = 9.81    # m/s²
-

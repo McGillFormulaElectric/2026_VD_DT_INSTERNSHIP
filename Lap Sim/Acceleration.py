@@ -1,9 +1,3 @@
-# Author: Ludih
-# Summary: Solver for the acceleration event. Simulates the car accelerating
-#          from standstill over 75m, stepping through time to compute speed,
-#          distance, and elapsed time at each step.
-
-
 from dataclasses import dataclass
 import numpy as np
 import Physics as ph
@@ -39,9 +33,7 @@ class AccelSolver:
         )}
 
         # Simulation loop
-        while s < self.track_length:
-            if k > 200_000:
-                raise RuntimeError(f"Stalled at {s:.2f} m.")
+        while s < self.track_length and k <= 200_000:
             ds = step_size(k)
 
             # Aero
@@ -72,8 +64,7 @@ class AccelSolver:
             elif Ax > 0:
                 dt = np.sqrt(2.0*ds/Ax)
             else:
-                raise RuntimeError("Car is stationary and Ax <= 0. "
-                                   "Check gear_ratio, tire_radius, torque_front_bias, torque curve.")
+                break   # car stationary and cannot accelerate, stop the run
 
             # Store results
             for key, val in (

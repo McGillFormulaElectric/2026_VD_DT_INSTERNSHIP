@@ -1,7 +1,3 @@
-# Author: Anne-So
-# Summary : Performance limits, corner_speed and tractive_force_4wd, 
-#           each returning the lowest of three ceilings the car can reach at a given instant.
-
 import numpy as np
 import Physics as ph
 
@@ -18,6 +14,9 @@ def tractive_force_4wd(tire, car, FzFL, FzFR, FzRL, FzRR, v):
 
     Per-corner grip (valid for Ay != 0). For an Ay=0 call pass the front load as
     both FzFL/FzFR and the rear as both FzRL/FzRR — left==right falls out.
+
+    Rev limit: above rpm_cap the returned "v" is clamped to the rev limit speed.
+    Callers must use it (v = min(v, t["v"])), torque is still applied at rpm_cap.
     """
     # Motor speed.
     rpm = ph.motor_rpm(car, v)
@@ -39,30 +38,14 @@ def tractive_force_4wd(tire, car, FzFL, FzFR, FzRL, FzRR, v):
     # Pack power
     b = car.torque_split
     norm = max(b, 1.0 - b)
-    base_F = b/norm * Fx_motor                       # commanded force per front wheel at lam=1
-    base_R = (1-b)/norm * Fx_motor                   # per rear wheel
+    base_F = b/norm * Fx_motor                       # [N] commanded force per front wheel
+    base_R = (1-b)/norm * Fx_motor                   # [N] per rear wheel
 
-    # efficiency cached by torque: identical torques share one lookup
-    eta_cache = {}
-    def eff(t):
-        k = round(t, 2)
-        e = eta_cache.get(k)
-        if e is None:
-            e = ph.motor_eff(car, rpm, t) * car.efficiency_scale   # correlated against accel.mat
-            eta_cache[k] = e
-        return e
-
-    def demand(lam, etas=None):
-        FxFL = min(lam*base_F, g_FL)            # clip each wheel by ITS OWN grip
-        FxFR = min(lam*base_F, g_FR)
-        FxRL = min(lam*base_R, g_RL)
-        FxRR = min(lam*base_R, g_RR)
-        T = [ph.motor_torque(car, f) for f in (FxFL, FxFR, FxRL, FxRR)]
-        eta = [eff(t) for t in T] if etas is None else etas   # reuse eta in back-off
-        P_pack = ph.pack_power(car, T, eta, rpm)
-        return [FxFL, FxFR, FxRL, FxRR], T, eta, P_pack
-
-    Fx, T, eta, P_pack = demand(1.0)
+    # Full demand, each wheel clipped by its own grip
+    Fx = [min(base_F, g_FL), min(base_F, g_FR), min(base_R, g_RL), min(base_R, g_RR)]   # [N]
+    T = [ph.motor_torque(car, f) for f in Fx]                                          # [Nm] per motor
+    eta = [ph.motor_eff(car, rpm, t) * car.efficiency_scale for t in T]                # correlated against accel.mat
+    P_pack = ph.pack_power(car, T, eta, rpm)                                           # [W]
 
     if P_pack > car.power_cap:
         Fx0 = Fx                                               # forces after grip clipping
@@ -130,8 +113,9 @@ def corner_speed(tire, car, R, AxG=0.0):
 
         # aero side force carries part of the lateral load, so the tyres need less
         # added after the friction ellipse: it does not use tyre grip
-        side_G = ph.sideforce(car, v) / (car.mass_total * car.g)
-        return AyG_cap + side_G >= Ay/car.g   
+        #side_G = ph.sideforce(car, v) / (car.mass_total * car.g)
+        #return AyG_cap + side_G >= Ay/car.g
+        return AyG_cap >= Ay/car.g     
 
     def bisect(fits, hi):
         if fits(hi):
@@ -161,11 +145,14 @@ def corner_speed(tire, car, R, AxG=0.0):
     rpm = ph.motor_rpm(car, v)
     eta = ph.motor_eff(car, rpm, T) * car.efficiency_scale       # same correction as tractive_force_4wd
     P_pack = ph.pack_power(car, [T]*4, [eta]*4, rpm)  # steady power to hold the corner [W]
-    
+
+    # rev first: when grip and power both fit at the rev limit, all three are equal and the limit is the revs
+    limit = "rev" if v == v_rpm else "grip" if v == v_grip else "power"
+
     return {
         "v":    v,                                  # corner speed [m/s]
         "AyG":   v**2 / (R * car.g),                 # lateral acceleration [g]
-        "limit": ("grip" if v == v_grip else "power" if v == v_power else "rev"),
+        "limit": limit,
         "P_pack":  P_pack,
         "FzFL":  Fz[0],
         "FzFR":  Fz[1],

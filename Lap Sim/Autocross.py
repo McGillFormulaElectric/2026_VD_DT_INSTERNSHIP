@@ -1,14 +1,8 @@
-# Author: Ludih
-# Summary: Autocross solver — one lap from a standing start.
-#          Usage:
-#              track = TrackMap(motec).createTrack(event="autocross", ds=0.5)
-#              result = solveAutocross.solve(track, car, tire)
-
 import numpy as np
 from SolverFunctions import corner_speed_ceiling, lap_profile, energy_and_time
 from Scoring import Scoring
 
-def solve(track, car, tire, v_max=None):
+def solve(tire, car, track, v_max=None):
     """Autocross: single lap from a standing start."""
     if v_max is None:
         v_max = corner_speed_ceiling(track, car, tire)

@@ -1,7 +1,3 @@
-# Author: Ludih
-# Summary: This script is used to read and process data from 
-#          Motec files to python in order to correlate/validate the Lap Sim.
-
 import scipy.io as sio
 
 class MotecData:

@@ -1,27 +1,34 @@
-import sys, pathlib
+import sys
+from pathlib import Path
+import matplotlib
+matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 
-CORE = pathlib.Path(__file__).resolve().parents[0]   # 2027 -> PowerTrain -> Analysis -> Lap Sim
-sys.path.insert(0, str(CORE))
+# Path to the Lap Sim folder
+LAPSIM_ROOT = Path(__file__).resolve().parents[0]   # 0 = script is in Lap Sim, 3 = script is in Lap Sim/3. Analysis/x/2027
+sys.path.insert(0, str(LAPSIM_ROOT))
 
 from MotecData import MotecData
 from TrackMap import TrackMap, saveTrack
 
-DATA = CORE / "1. Data"
+NAME = "TorontoShootout2026"   # track name, also the saved file name
+N_APEX = 35              # number of apexes to find
 
+# ── build the track from the Motec log and save it ────────────
+motec = MotecData(LAPSIM_ROOT / "1. Data" / "Motec" / "TorontoShootout2026.mat")
+track = TrackMap(motec, name=NAME).createTrack(event="autocross", n_apex=N_APEX, curvature="car")   # curvature from yaw rate / speed
+saveTrack(track, LAPSIM_ROOT / "1. Data" / "Track", name=NAME)
 
-# build a track from a Motec log and save it
-motec = MotecData(DATA / "Motec"/ "autocross.mat")
-track = TrackMap(motec, name="autocrossID16").createTrack(event="autocross", n_apex=25, curvature="car")
-saveTrack(track, DATA / "Track", name="autocrossID16")
+print(f"event:      {track.event}")
+print(f"lap length: {track.lap_length:.1f} m")
+print(f"laps:       {track.n_laps}")
+print(f"apexes:     {len(track.apex)}")
 
-print("event      :", track.event)
-print("lap length :", round(track.lap_length, 1), "m")
-print("n laps     :", track.n_laps)
-print("n apex     :", len(track.apex))
-
-# quick look: track with apexes marked
-plt.plot(track.x, track.y, "-")
-plt.plot(track.x[track.apex], track.y[track.apex], "ro")
+# ── track with apexes marked ──────────────────────────────────
+plt.plot(track.x, track.y)                                 # m
+plt.plot(track.x[track.apex], track.y[track.apex], "ro")   # apexes
 plt.axis("equal")
+plt.xlabel("x [m]")
+plt.ylabel("y [m]")
+plt.grid(True)
 plt.show()

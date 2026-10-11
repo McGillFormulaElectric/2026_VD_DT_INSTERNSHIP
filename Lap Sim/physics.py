@@ -1,14 +1,7 @@
-# Author: Ludih and Anne-So
-# Summary: Physics functions for the MFE27 Lap Simulator.
-#          All functions are stateless — they take a car (MFE27) instance
-#          and current state values, and return forces / accelerations / limits.
-#          Import this module into your solver and call functions by name.
-
 import numpy as np
 from scipy.interpolate import interpn
 
 # ── Tires ──────────────────────────────────────────────────
-
 def rolling_resistance(car, Vx, Fz):
     """Returns the rolling resistance (N) at a given speed (m/s) and normal load (N)"""
     p_bar = car.tire_pressure * 0.0689476  # psi to bar
@@ -16,7 +9,6 @@ def rolling_resistance(car, Vx, Fz):
     return Fz * c
 
 # ── Load Transfer ──────────────────────────────────────────────────
-
 def long_LT_total(car, Ax):
     """Returns the longitudinal load transfer (N) at a given acceleration (m/s^2)"""
     return car.mass_total * Ax * car.CG_height / car.wheelbase
@@ -50,25 +42,23 @@ def RL_LLT(LLT_total, LLTD):
     return - LLT_total * (1 - LLTD)
 
 # ── Wheels Load ───────────────────────────────────────────
-
 def FL_Fz(car, downforce, Ay, Ax):
     """Returns the front left vertical load (N) at a given normal load (N) and accelerations (m/s^2)"""
-    return (car.mass_total * car.g * car.CGx) / 2 + (downforce * car.aero_balance) / 2 + front_long_LT(long_LT_total(car, Ax)) + FL_LLT(LLT_total(car, Ay), car.lltd) - aero_pitch_LT(car, downforce) / 2
+    return (car.mass_total * car.g * car.CGx) / 2 + (downforce * car.aero_balance) / 2 + front_long_LT(long_LT_total(car, Ax)) + FL_LLT(LLT_total(car, Ay), car.lltd)
 
 def FR_Fz(car, downforce, Ay, Ax):
     """Returns the front right vertical load (N) at a given normal load (N) and accelerations (m/s^2)"""
-    return (car.mass_total * car.g * car.CGx) / 2 + (downforce * car.aero_balance) / 2 + front_long_LT(long_LT_total(car, Ax)) + FR_LLT(LLT_total(car, Ay), car.lltd) - aero_pitch_LT(car, downforce) / 2
+    return (car.mass_total * car.g * car.CGx) / 2 + (downforce * car.aero_balance) / 2 + front_long_LT(long_LT_total(car, Ax)) + FR_LLT(LLT_total(car, Ay), car.lltd)
 
 def RL_Fz(car, downforce, Ay, Ax):
     """Returns the rear left vertical load (N) at a given normal load (N) and accelerations (m/s^2)"""
-    return (car.mass_total * car.g * (1 - car.CGx)) / 2 + (downforce * (1 - car.aero_balance)) / 2 + rear_long_LT(long_LT_total(car, Ax)) + RL_LLT(LLT_total(car, Ay), car.lltd) + aero_pitch_LT(car, downforce) / 2
+    return (car.mass_total * car.g * (1 - car.CGx)) / 2 + (downforce * (1 - car.aero_balance)) / 2 + rear_long_LT(long_LT_total(car, Ax)) + RL_LLT(LLT_total(car, Ay), car.lltd)
 
 def RR_Fz(car, downforce, Ay, Ax):
     """Returns the rear right vertical load (N) at a given normal load (N) and accelerations (m/s^2)"""
-    return (car.mass_total * car.g * (1 - car.CGx)) / 2 + (downforce * (1 - car.aero_balance)) / 2 + rear_long_LT(long_LT_total(car, Ax)) + RR_LLT(LLT_total(car, Ay), car.lltd) + aero_pitch_LT(car, downforce) / 2
+    return (car.mass_total * car.g * (1 - car.CGx)) / 2 + (downforce * (1 - car.aero_balance)) / 2 + rear_long_LT(long_LT_total(car, Ax)) + RR_LLT(LLT_total(car, Ay), car.lltd)
 
 # ── Aero ──────────────────────────────────────────────────
-
 def downforce(car, v):
     """Returns the downforce (N) at a given speed (m/s)"""
     return 0.5 * car.air_density * car.CLA * v**2
@@ -77,17 +67,11 @@ def drag(car, v):
     """Returns the drag force (N) at a given speed (m/s)"""
     return 0.5 * car.air_density * car.CDA * v**2
 
-def sideforce(car, v, utilisation=1.0):
-    """Returns the aero side force (N), pushing toward the inside of the corner."""
-    return 0.5 * car.air_density * car.CSA * v**2 * min(max(utilisation, 0.0), 1.0)
-
-def aero_pitch_LT(car, downforce):
-    """Returns the load (N) moved from front to rear axle by drag acting at cop_z above the ground."""
-    drag_force = downforce * car.CDA / car.CLA
-    return drag_force * car.cop_z / car.wheelbase
+#def sideforce(car, v, utilisation=1.0):
+#    """Returns the aero side force (N), pushing toward the inside of the corner."""
+#    return 0.5 * car.air_density * car.CSA * v**2 * min(max(utilisation, 0.0), 1.0)
 
 # ── PowerTrain ──────────────────────────────────────────────────
-
 def motor_eff(car, rpm, torque):
     """Motor efficiency (0..1), bilinear from the map, clamped to edges.
     Hand-rolled 2x2 lookup — avoids scipy per-call overhead in the solver loop."""
@@ -130,15 +114,19 @@ def wheel_force(car, T):
     return T * car.gear_ratio / car.tire_radius
 
 # ── Cornering (induced) drag ───────────────────────────────
-
 def cornering_drag(car, Ay, utilisation, slip_peak):
     """Returns the induced 'tyre' drag (N) from carrying lateral force Ay (m/s^2) at a slip angle that grows with lateral utilisation util (0 to 1)"""
     slip = np.radians(slip_peak) * min(max(utilisation, 0.0), 1.0)
     return abs(car.mass_total * Ay) * np.sin(slip)
 
 # ── Braking ────────────────────────────────────────────────
-
 def brake_force_limit(front_grip, rear_grip, brake_bias):
     """Returns the max total braking force (N) with a fixed front brake_bias (0 to 1), capped by whichever axle saturates first: min(front_grip/bias, rear_grip/(1-bias))"""
     b = min(max(brake_bias, 1e-6), 1.0 - 1e-6)
     return min(front_grip / b, rear_grip / (1.0 - b))
+
+# ── Regen ────────────────────────────────────────────────
+def regen_pack_power(car, torques, etas, rpm):
+    """Returns the battery pack power (W, negative = charging) from a list of regen torques (Nm, positive) at a given motor speed (rpm)"""
+    omega = rpm * 2 * np.pi / 60
+    return -sum(T * omega * eta * car.inverter_efficiency for T, eta in zip(torques, etas))
