@@ -6,7 +6,7 @@
 
 from dataclasses import dataclass
 import numpy as np
-import Physics as ph
+import physics as ph
 import Limits as lim
 from Scoring import Scoring
 
@@ -35,10 +35,11 @@ class AccelSolver:
             "FzF", "FzR", "Downforce", "Drag", "Frolling", "Fx_penalties",
             "Fx_tractive", "Fx_net",
             "P_F", "P_R", "EfficiencyF", "EfficiencyR", "PackPower",
-            "rpm", "TmotorF", "TmotorR",
+            "rpm", "TmotorF", "TmotorR", "limit"
         )}
 
         # Simulation loop
+        v_cap = ph.vehicle_speed(car, car.rpm_cap)
         while s < self.track_length:
             if k > 200_000:
                 raise RuntimeError(f"Stalled at {s:.2f} m.")
@@ -62,10 +63,24 @@ class AccelSolver:
             Fx_net = t["Fx_total"] - Fx_penalties
             
             # Calculate acceleration (m/s²)
-            Ax = Fx_net / car.mass_total
+            Ax = Fx_net / car.effective_mass
+
+            if v >= v_cap - 1e-9:                    # on the limiter: hold speed
+                Fx_hold = Fx_penalties
+                T_hold  = ph.motor_torque(car, Fx_hold / 4)
+                eta     = ph.motor_eff(car, car.rpm_cap, T_hold)
+                t["Fx_total"]  = Fx_hold
+                t["PackPower"] = ph.pack_power(car, [T_hold]*4, [eta]*4, car.rpm_cap)
+                t["TmotorF"] = t["TmotorR"] = T_hold
+                t["EfficiencyF"] = t["EfficiencyR"] = eta
+                t["P_F"] = t["P_R"] = T_hold * car.rpm_cap * 2*np.pi/60
+                Fx_net = 0.0
+                Ax = 0.0
 
             # Update speed and position
             v_next = np.sqrt(max(v**2 + 2.0*Ax*ds, 0.0))
+            v_next = min(v_next, v_cap)
+
             v_bar = 0.5*(v + v_next)
             if v_bar > 1e-6:
                 dt = ds / v_bar
@@ -73,7 +88,7 @@ class AccelSolver:
                 dt = np.sqrt(2.0*ds/Ax)
             else:
                 raise RuntimeError("Car is stationary and Ax <= 0. "
-                                   "Check gear_ratio, tire_radius, torque_front_bias, torque curve.")
+                                "Check gear_ratio, tire_radius, torque_split, torque curve.")
 
             # Store results
             for key, val in (
@@ -85,7 +100,7 @@ class AccelSolver:
                 ("P_F", t["P_F"]), ("P_R", t["P_R"]),
                 ("EfficiencyF", t["EfficiencyF"]), ("EfficiencyR", t["EfficiencyR"]),
                 ("PackPower", t["PackPower"]), ("rpm", t["rpm"]),
-                ("TmotorF", t["TmotorF"]), ("TmotorR", t["TmotorR"]),
+                ("TmotorF", t["TmotorF"]), ("TmotorR", t["TmotorR"]), ("limit", t["limit"])
             ):
                 log[key].append(val)
 
@@ -94,17 +109,21 @@ class AccelSolver:
             s += ds
             k += 1
 
-        out = {key: np.asarray(val, dtype=float) for key, val in log.items()}
+        out = {key: (np.asarray(val) if key == "limit" else np.asarray(val, dtype=float))
+            for key, val in log.items()}
         out["time"] = np.concatenate(([0.0], np.cumsum(out["dt"])[:-1]))
         out["EnergyPack"] = float(np.sum(out["PackPower"] * out["dt"]))
         out["time_total"] = float(np.sum(out["dt"]))
+        lap_time = float(np.sum(out["dt"][out["dist"] >= 0.0]))  
         out["v_final"] = float(v)
 
-        lap_time = out["time_total"]
-        return {"event": "acceleration", "s": out["dist"], "v": out["v"],
+        return {**out,
+                "event": "acceleration",
+                "s": out["dist"], "t": out["time"], "P_pack": out["PackPower"],
+                "I_pack": out["PackPower"] / car.pack_voltage,
                 "v_max": out["v_final"],
-                "t": out["time"], "P_pack": out["PackPower"],
-                "lap_time": lap_time, "energy_kWh": out["EnergyPack"] / 3.6e6,
+                "lap_time": lap_time,
+                "energy_kWh": out["EnergyPack"] / 3.6e6,
                 "avg_power_kW": out["EnergyPack"] / lap_time / 1000,
                 "comp_point": Scoring.getAccelScore(lap_time),
                 "peak_Ax": float(np.max(out["Ax"])),

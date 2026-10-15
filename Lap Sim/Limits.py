@@ -3,7 +3,7 @@
 #           each returning the lowest of three ceilings the car can reach at a given instant.
 
 import numpy as np
-import Physics as ph
+import physics as ph
 
 def tractive_force_4wd(tire, car, FzFL, FzFR, FzRL, FzRR, v):
     """Returns the forward force (N) at the four contact patches, the lowest of the grip, motor torque and pack power ceilings.
@@ -63,17 +63,36 @@ def tractive_force_4wd(tire, car, FzFL, FzFR, FzRL, FzRR, v):
         return [FxFL, FxFR, FxRL, FxRR], T, eta, P_pack
 
     Fx, T, eta, P_pack = demand(1.0)
-
+    
+    power_limited = False
     if P_pack > car.power_cap:                                 # too much, back it off
-        lam = 1.0
-        for _ in range(4):
-            lam *= car.power_cap / P_pack          # nudge lam by the current error ratio
-            Fx, T, eta, P_pack = demand(lam, etas=eta)   # eta ~constant as lam trims torque
-            if abs(P_pack - car.power_cap) < 0.005 * car.power_cap:
+        power_limited = True
+        lo, hi = 0.0, 1.0                    # P_pack(lam) only goes up with lam -> bisect
+        for _ in range(20):
+            lam = 0.5 * (lo + hi)
+            Fx, T, eta, P_pack = demand(lam)
+            if P_pack > car.power_cap:
+                hi = lam                     # still too much
+            else:
+                lo = lam                     # fits
+            if 0.0 <= car.power_cap - P_pack < 0.002 * car.power_cap:
                 break
+        if P_pack > car.power_cap:           # ended on the high side: take the last one that fit
+            Fx, T, eta, P_pack = demand(lo)
+
+    # Which ceiling is active (for logging / plots)
+    if rpm >= car.rpm_cap:
+        limit = "rev"
+    elif power_limited:
+        limit = "power"
+    elif all(f >= g - 1e-6 for f, g in zip(Fx, (g_FL, g_FR, g_RL, g_RR))):
+        limit = "grip"
+    else:
+        limit = "torque"
 
     return {
-        "Fx_total": sum(Fx),              # Ax = (Fx_total - Drag - Frolling) / mass
+        "Fx_total": sum(Fx),     
+        "limit": limit,          # Ax = (Fx_total - Drag - Frolling) / mass
         "FxFL": Fx[0], "FxFR": Fx[1], "FxRL": Fx[2], "FxRR": Fx[3],
         "Tmotor": T, "Efficiency": eta,
         "PackPower": P_pack, "rpm": rpm, "v": v,

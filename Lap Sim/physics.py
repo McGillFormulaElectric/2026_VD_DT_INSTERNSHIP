@@ -77,6 +77,12 @@ def drag(car, v):
     """Returns the drag force (N) at a given speed (m/s)"""
     return 0.5 * car.air_density * car.CDA * v**2
 
+def cornering_drag(car, Ay, utilisation):
+    """Returns the induced 'tyre' drag (N) from carrying lateral force Ay (m/s^2) at a slip angle that grows with lateral utilisation util (0 to 1)"""
+    slip = np.radians(car.slip_peak) * min(max(utilisation, 0.0), 1.0)
+    return abs(car.mass_total * Ay) * np.sin(slip)
+
+
 #sideforce
 
 # ── PowerTrain ──────────────────────────────────────────────────
@@ -122,12 +128,6 @@ def wheel_force(car, T):
     """Returns the force at one contact patch (N) produced by a given motor torque (Nm)"""
     return T * car.gear_ratio / car.tire_radius
 
-# ── Cornering (induced) drag ───────────────────────────────
-
-def cornering_drag(car, Ay, utilisation):
-    """Returns the induced 'tyre' drag (N) from carrying lateral force Ay (m/s^2) at a slip angle that grows with lateral utilisation util (0 to 1)"""
-    slip = np.radians(car.slip_peak) * min(max(utilisation, 0.0), 1.0)
-    return abs(car.mass_total * Ay) * np.sin(slip)
 
 # ── Braking ────────────────────────────────────────────────
 

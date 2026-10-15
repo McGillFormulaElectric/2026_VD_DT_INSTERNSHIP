@@ -2,7 +2,7 @@
 # Summary: Shared solver functions for the Autocross/Endurance events.
 
 import numpy as np
-import Physics as ph
+import physics as ph
 import Limits
 
 
