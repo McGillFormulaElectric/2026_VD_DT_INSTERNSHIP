@@ -12,9 +12,9 @@ from SolverFunctions import braking_decel
 
 # target from BrakeCorrelation.py, brake.mat, 8 to 14 m/s window, all 5 checks GOOD
 # low speed on purpose, drag is about 0.04 g here so a CdA error moves the result about 1 %
-DECEL_TARGET = 0.928   # g
+DECEL_TARGET = 0.930   # g
 V_TARGET = 11.0        # m/s, average speed in the window
-TOLERANCE = 1.0        # %, stop when sim is this close to target
+TOLERANCE = 0.5        # %, stop when sim is this close to target
 FZ_FRONT = 1400        # N, roughly a front wheel under braking
 TEST_SLIP = -0.15      # -, median slip in the brake test
 

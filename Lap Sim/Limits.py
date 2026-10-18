@@ -30,6 +30,7 @@ def tractive_force_4wd(tire, car, FzFL, FzFR, FzRL, FzRR, v):
     g_FR = tire.peak_drive(FzFR)
     g_RL = tire.peak_drive(FzRL)
     g_RR = tire.peak_drive(FzRR)
+    grip = [g_FL, g_FR, g_RL, g_RR]                            # [N] per wheel
 
     # Motor torque
     T_max = min(np.interp(rpm, car.curve_rpm, car.curve_torque), car.torque_cap) * car.torque_scale   # [Nm] per motor,capped
@@ -58,8 +59,15 @@ def tractive_force_4wd(tire, car, FzFL, FzFR, FzRL, FzRR, v):
             if abs(P_pack - car.power_cap) < 0.005 * car.power_cap:
                 break
 
+    # Mass for Ax
+    torque_limited = [f < gr for f, gr in zip(Fx, grip)]                # below grip = motor/power limited
+    mass = car.mass_total + car.mass_rot_corner * sum(torque_limited)   # [kg] grip limited corners add no rotating mass
+
     return {
         "Fx_total": sum(Fx),              # Ax = (Fx_total - Drag - Frolling) / mass
+        "mass": mass,                     # [kg] use for Ax, not car.mass_effective
+        "grip_total": sum(grip),          # [N] pure drive grip, 4 wheels, for the friction ellipse
+        "torque_limited": torque_limited, # FL, FR, RL, RR
         "FxFL": Fx[0], "FxFR": Fx[1], "FxRL": Fx[2], "FxRR": Fx[3],
         "Tmotor": T, "Efficiency": eta,
         "PackPower": P_pack, "rpm": rpm, "v": v,
@@ -80,7 +88,7 @@ def corner_speed(tire, car, R, AxG=0.0):
     AxG  : simultaneous longitudinal acceleration (g). Zero for pure cornering,
            non zero when sweeping the friction ellipse for the g-g diagram.
     """
-    R = max(abs(R), 1.0)
+    R = abs(R)
 
     # Rpm limit
     v_rpm = ph.vehicle_speed(car, car.rpm_cap)
@@ -105,7 +113,8 @@ def corner_speed(tire, car, R, AxG=0.0):
 
         # Friction ellipse. 
         if AxG != 0.0:
-            AxG_cap = sum(tire.peak(f)[0] for f in Fz) / (car.mass_effective * car.g)
+            idx = 0 if AxG > 0 else 1                 # drive peak accelerating, brake peak braking
+            AxG_cap = sum(tire.peak(f)[idx] for f in Fz) / (car.mass_total * car.g)   # [g] grip cap, translating mass only
             inner = 1.0 - (AxG / AxG_cap)**2
             if inner <= 0.0:
                 return False                          # all grip spent longitudinally

@@ -7,9 +7,8 @@
 import numpy as np
 import scipy.io
 
-
 class Tire:
-    def __init__(self, param_path, fzref_path, muxScale=0.55, muyScale=0.6162,
+    def __init__(self, param_path, fzref_path, muxScale=0.4329, muyScale=0.4854,
                  Fz_max=3500.0, n_grid=80, build_camber=0.0):
         # param_path: MF61_Parameters.mat, Fz0, coefficients (p) and scaling factors (lamda)
         # fzref_path: FZ_Reference.mat, loads the TTC fit was done at

@@ -22,7 +22,7 @@ TRACK_DIR = LAPSIM_ROOT / "1. Data" / "Track"
 
 car_base = MFE26()
 tire = Tire(TIRE_DIR / "MF61_Parameters.mat", TIRE_DIR / "FZ_Reference.mat")   # correlated defaults in Tire.py
-track = loadTrack(TRACK_DIR, "Endurance_Michigan_2024")   # only autocross needs a track
+track = loadTrack(TRACK_DIR, "Michigan2026_Autocross")   # only autocross needs a track
 
 # event name: function that takes a car and returns the event time [s]
 EVENTS = {
@@ -31,8 +31,14 @@ EVENTS = {
     "Autocross": lambda car: solve(tire, car, track)["lap_time"],
 }
 
-CLA_LIST = np.linspace(2.1, 4.5, 20)   # m^2
-CDA_LIST = np.linspace(1.0, 2.0, 20)   # m^2
+#Sweep parameters
+CLA_START, CLA_STOP, CLA_STEP = 3.8, 4.8, 0.1   # m^2, ClA range and step
+CDA_START, CDA_STOP, CDA_STEP = 1.0, 2.0, 0.1   # m^2, CdA range and step
+
+CLA_LIST = np.arange(CLA_START, CLA_STOP + CLA_STEP / 2, CLA_STEP)   # m^2
+CDA_LIST = np.arange(CDA_START, CDA_STOP + CDA_STEP / 2, CDA_STEP)   # m^2
+print(f"baseline: ClA {car_base.CLA:.2f} m^2, CdA {car_base.CDA:.2f} m^2")
+print(f"{len(CLA_LIST)} ClA points x {len(CDA_LIST)} CdA points = {len(CLA_LIST) * len(CDA_LIST)} runs per event")
 
 fig, axs = plt.subplots(1, len(EVENTS), figsize=(17, 5))
 
@@ -55,6 +61,7 @@ for ax, (name, run_event) in zip(axs, EVENTS.items()):
     # plot
     pc = ax.pcolormesh(CDA_LIST, CLA_LIST, T, shading="nearest", cmap="viridis", edgecolors="k", linewidth=0.5)
     fig.colorbar(pc, ax=ax)
+    ax.plot(car_base.CDA, car_base.CLA, "ro", ms=6)   # baseline car
     ax.set_xlabel("CdA (m^2)")
     ax.set_ylabel("ClA (m^2)")
     ax.set_title(f"{name} Time (s)", fontweight="bold")

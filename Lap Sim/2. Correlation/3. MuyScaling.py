@@ -10,10 +10,10 @@ from Tire import Tire
 from SkidPad import SkidPadSolver
 
 # target from SkidPadCorrelation.py, skidpad2.mat
-AY_TARGET = 1.406   # g
-R_TARGET = 9.67     # m, measured path radius
+AY_TARGET = 1.366   # g
+R_TARGET = 9.78     # m, measured path radius
 V_TARGET = 41.5     # km/h, only to compare
-TOLERANCE = 1.0     # %, stop when sim is this close to target
+TOLERANCE = 0.5     # %, stop when sim is this close to target
 
 # car, tire and solver at the measured radius
 TIRE_DIR = LAPSIM_ROOT / "1. Data" / "Tire"

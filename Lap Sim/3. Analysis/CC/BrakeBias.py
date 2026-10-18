@@ -6,7 +6,7 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 
 # Path to the Lap Sim folder
-LAPSIM_ROOT = Path(__file__).resolve().parents[1]   # folder that holds CarProperties.py
+LAPSIM_ROOT = Path(__file__).resolve().parents[2]   # folder that holds CarProperties.py
 sys.path.insert(0, str(LAPSIM_ROOT))
 
 from TrackMap import loadTrack

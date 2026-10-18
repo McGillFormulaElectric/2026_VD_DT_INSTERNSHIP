@@ -17,16 +17,16 @@ class MFE26:
     # ── Mass ──────────────────────────────────────────────────
     mass_battery:       float = 46.0  # kg  battery pack mass 
     mass_driver:        float = 70.0  # kg  driver mass
-    mass_aero:          float = 16.0  # kg  aerodynamic mass
+    mass_aero:          float = 18.0  # kg  aerodynamic mass
     mass_unsprung_f:    float = 32.0  # kg  unsprung mass (front)
     mass_unsprung_r:    float = 32.0  # kg  unsprung mass (rear)
-    mass_no_driver:     float = 203.0 # kg  total mass without driver
+    mass_no_driver:     float = 203.0 - mass_aero # kg  total mass without driver
     J_motor:            float = 0.000274  # kg m²  rotor inertia per motor, check the AMK datasheet
-    J_wheel:            float = 0.10      # kg m²  wheel + tyre + hub per corner, estimate or measure
+    J_wheel:            float = 0.21955      # kg m²  wheel + tyre + hub per corner, estimate or measure
     
     @property
     def mass_total(self):  # kg  total mass of the car with driver
-        return self.mass_no_driver + self.mass_driver
+        return self.mass_no_driver + self.mass_driver + self.mass_aero
 
     @property
     def mass_sprung(self):  # kg  (chassis + aero + battery)
@@ -41,13 +41,17 @@ class MFE26:
         return self.mass_sprung * (1-self.CGx)
     
     @property
-    def mass_effective(self):  # kg  mass + spinning parts seen at the wheels, for longitudinal accel only
-        return self.mass_total + 4 * (self.J_motor * self.gear_ratio**2 + self.J_wheel) / self.tire_radius**2
+    def mass_rot_corner(self):  # kg  rotor + wheel inertia seen at ONE contact patch
+        return (self.J_motor * self.gear_ratio**2 + self.J_wheel) / self.tire_radius**2
+
+    @property
+    def mass_effective(self):   # kg  only valid when ALL four corners are torque limited
+        return self.mass_total + 4 * self.mass_rot_corner
     
     # ── Tires ──────────────────────────────────────────────────
-    camber_front:       float = 0    # deg  front camber angle
-    camber_rear:        float = 0    # deg  rear camber angle
-    tire_radius:        float = 0.201  # m  loaded radius
+    camber_front:       float = 0       # deg  front camber angle
+    camber_rear:        float = 0       # deg  rear camber angle
+    tire_radius:        float = 0.1997  # m  loaded radius
     tire_pressure:      float = 13      # psi tire pressure hot
     # ── Suspension ────────────────────────────────────────────
     RC_height_front:         float = 0.0866   # m  front roll center height
@@ -75,7 +79,7 @@ class MFE26:
     efficiency_scale:      float = 0.95     # pack to shaft correction from accel.mat (0.82 measured vs 0.873 sim)
     drivetrain:            str   = "AWD"    # "AWD"  "RWD"  "FWD"
     gear_ratio:            float = 13.39    # final drive ratio
-    regen:                 bool = True      # True if regen braking is enabled
+    regen:                 bool = False     # True if regen braking is enabled
     max_regen_torque:      float = 10       # Nm  at motor
     
     def __post_init__(self):
@@ -93,7 +97,7 @@ class MFE26:
 
     # ── Brakes ────────────────────────────────────────────────
     max_decel:          float = 25.0    # m/s²  peak braking deceleration
-    brake_bias_front:   float = 0.6    # fraction of brake force on front axle
+    brake_bias_front:   float = 0.5    # fraction of brake force on front axle
     # ── Constants ─────────────────────────────────────────────
     air_density:        float = 1.225   # kg/m³
     g:                  float = 9.81    # m/s²
@@ -105,7 +109,7 @@ class MFE27:
     track:              float = 1.150   # m
     lltd:               float = 0.474   # m  lateral load transfer distribution (front)
     CG_height:          float = 0.286   # m
-    CGx:                float = 0.44    # fraction of total weight on front axle
+    CGx:                float = 0.4437    # fraction of total weight on front axle
     # ── Mass ──────────────────────────────────────────────────
     mass_battery:       float = 46.0  # kg  battery pack mass 
     mass_driver:        float = 70.0  # kg  driver mass
@@ -113,8 +117,8 @@ class MFE27:
     mass_unsprung_f:    float = 32.0  # kg  unsprung mass (front)
     mass_unsprung_r:    float = 32.0  # kg  unsprung mass (rear)
     mass_no_driver:     float = 185.0 # kg  total mass without driver
-    J_motor:            float = 0.00033 # kg m²  rotor inertia per motor, check the AMK datasheet
-    J_wheel:            float = 0.10      # kg m²  wheel + tyre + hub per corner, estimate or measure
+    J_motor:            float = 0.00033 # kg m²  rotor inertia per motor, check the Fisher datasheet
+    J_wheel:            float = 0.21955      # kg m²  wheel + tyre + hub per corner, estimate or measure
 
     @property
     def mass_total(self):  # kg  total mass of the car with driver
@@ -133,13 +137,17 @@ class MFE27:
         return self.mass_sprung * (1-self.CGx)
     
     @property
-    def mass_effective(self):  # kg  mass + spinning parts seen at the wheels, for longitudinal accel only
-        return self.mass_total + 4 * (self.J_motor * self.gear_ratio**2 + self.J_wheel) / self.tire_radius**2
+    def mass_rot_corner(self):  # kg  rotor + wheel inertia seen at ONE contact patch
+        return (self.J_motor * self.gear_ratio**2 + self.J_wheel) / self.tire_radius**2
+
+    @property
+    def mass_effective(self):   # kg  only valid when ALL four corners are torque limited
+        return self.mass_total + 4 * self.mass_rot_corner
 
     # ── Tires ──────────────────────────────────────────────────
     camber_front:       float = 0    # deg  front camber angle
     camber_rear:        float = 0    # deg  rear camber angle
-    tire_radius:        float = 0.198  # m  loaded radius
+    tire_radius:        float = 0.1997 # m  effective rolling radius, correlated on MFE26 (same tyre)
     tire_pressure:      float = 13      # psi tire pressure hot
     # ── Suspension ────────────────────────────────────────────
     RC_height_front:         float = 0.0866   # m  front roll center height

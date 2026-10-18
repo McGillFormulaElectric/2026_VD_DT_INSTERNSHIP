@@ -21,130 +21,67 @@ from Endurance import solve as endurance_solve
 TIRE_DIR = LAPSIM_ROOT / "1. Data" / "Tire"
 TRACK_DIR = LAPSIM_ROOT / "1. Data" / "Track"
 
-TRACK = "Endurance_Michigan_2024"
-RATIOS = np.arange(6, 18.01, 0.25)
-SENS_RATIOS = np.arange(7, 17.01, 0.5)
-VARY = 0.10   # +/- 10 %
-EVENTS = ["accel", "autocross", "endurance"]
-
-PARAMS = [
-    ("total mass",         "mass_total"),
-    ("effective mass",     "mass_effective"),
-    ("torque scale",       "torque_scale"),
-    ("motor efficiency",   "efficiency_scale"),
-    ("tyre radius",        "tire_radius"),
-    ("CG height",          "CG_height"),      
-    ("torque split",       "torque_split"),
-    ("CdA",                "CDA"),
-    ("ClA",                "CLA"),
-    ("aero balance",       "aero_balance"),
-    ("long. grip",         "muxScale"),
-    ("lat. grip",          "muyScale"),
-    ("CGX",                "CGx"),
-]
-TIRE_ATTRS = ("muxScale", "muyScale")
+AUTOCROSS_TRACK = "Endurance_Michigan_2024"            # name of the .npz in 1. Data/Track, used for autocross
+ENDURANCE_TRACK = "Endurance_Michigan_2024"  # name of the .npz in 1. Data/Track, used for endurance
+RATIOS = np.arange(2, 18.01, 0.1)   # gear ratios to sweep
 
 car = MFE27()
 tire = Tire(TIRE_DIR / "MF61_Parameters.mat", TIRE_DIR / "FZ_Reference.mat")
-track = loadTrack(TRACK_DIR, TRACK)
+track_ax = loadTrack(TRACK_DIR, AUTOCROSS_TRACK)
+track_en = loadTrack(TRACK_DIR, ENDURANCE_TRACK)
 baseline = car.gear_ratio
 
-def run_events():
-    v_max = corner_speed_ceiling(track, car, tire)   # depends on the ratio, recompute
-    en = endurance_solve(tire, car, track, v_max=v_max)
-    return {"accel": AccelSolver().simulate(tire, car)["lap_time"],                     # s
-            "autocross": autocross_solve(tire, car, track, v_max=v_max)["lap_time"],    # s
-            "endurance": en["total_time"],                                               # s
-            "energy": en["total_energy_kWh"]}                                            # kWh
-
-def sweep(ratios):
-    res = {key: [] for key in EVENTS + ["energy"]}
-    for g in ratios:
-        car.gear_ratio = g
-        for key, val in run_events().items():
-            res[key].append(val)
-    car.gear_ratio = baseline
-    return {key: np.asarray(val) for key, val in res.items()}
-
-def set_value(target, attr, value):
-    # read-only properties (like mass_total) are replaced on the class for the run, returns an undo function
-    cls = type(target)
-    prop = getattr(cls, attr, None)
-    if isinstance(prop, property) and prop.fset is None:
-        had = attr in cls.__dict__
-        old = cls.__dict__.get(attr)
-        setattr(cls, attr, property(lambda self: value))
-        return lambda: setattr(cls, attr, old) if had else delattr(cls, attr)
-    old = getattr(target, attr)
-    setattr(target, attr, value)
-    return lambda: setattr(target, attr, old)
-
-def best(ratios, y):
-    # (ratio, value) at the minimum, parabola through the 3 points around it
-    i = int(np.argmin(y))
-    if i == 0 or i == len(ratios) - 1:
-        return ratios[i], y[i]
-    a, b, c = np.polyfit(ratios[i-1:i+2], y[i-1:i+2], 2)
-    if a <= 0:
-        return ratios[i], y[i]
-    return -b / (2 * a), c - b**2 / (4 * a)
-
 # run
-res = sweep(RATIOS)
+KEYS = ["accel", "autocross", "endurance", "accel_pts", "autocross_pts", "endurance_pts", "efficiency_pts"]
+res = {key: [] for key in KEYS}
+for n, g in enumerate(RATIOS):
+    car.gear_ratio = g
+    v_max_ax = corner_speed_ceiling(track_ax, car, tire)   # m/s, depends on the ratio through the rev limit, recompute
+    v_max_en = corner_speed_ceiling(track_en, car, tire)   # m/s, one per track
+    acc = AccelSolver().simulate(tire, car)
+    ax_run = autocross_solve(tire, car, track_ax, v_max=v_max_ax)
+    en = endurance_solve(tire, car, track_en, v_max=v_max_en)
+    res["accel"].append(acc["lap_time"])               # s
+    res["autocross"].append(ax_run["lap_time"])        # s
+    res["endurance"].append(en["total_time"])          # s
+    res["accel_pts"].append(acc["comp_point"])
+    res["autocross_pts"].append(ax_run["comp_point"])
+    res["endurance_pts"].append(en["endurance_score"])
+    res["efficiency_pts"].append(en["efficiency_score"])
+    print(f"\rsweep: {(n + 1) / len(RATIOS) * 100:5.1f} %  (ratio {g:.2f})", end="")
+print()
+car.gear_ratio = baseline
+res = {key: np.asarray(val) for key, val in res.items()}
 
-ref = sweep(SENS_RATIOS)
-ref_best = {e: best(SENS_RATIOS, ref[e]) for e in EVENTS}
-d_ratio = {e: np.zeros((len(PARAMS), 2)) for e in EVENTS}   # -, shift in best ratio, columns -10 % / +10 %
-d_time = {e: np.zeros((len(PARAMS), 2)) for e in EVENTS}    # s, change in time at the best ratio
-
-for p, (label, attr) in enumerate(PARAMS):
-    target = tire if attr in TIRE_ATTRS else car
-    old = getattr(target, attr)
-    for j, factor in enumerate((1 - VARY, 1 + VARY)):
-        undo = set_value(target, attr, old * factor if np.isscalar(old) else np.asarray(old) * factor)
-        r = sweep(SENS_RATIOS)
-        undo()
-        for e in EVENTS:
-            g, t = best(SENS_RATIOS, r[e])
-            d_ratio[e][p, j] = g - ref_best[e][0]
-            d_time[e][p, j] = t - ref_best[e][1]
-    print(f"{label} done")
-
-# plots
-fig, axs = plt.subplots(2, 2, figsize=(12, 8))
-plots = [(axs[0, 0], "energy", "Endurance Energy (kWh)"),
-         (axs[0, 1], "endurance", "Endurance Time (s)"),
-         (axs[1, 0], "autocross", "Autocross Time (s)"),
-         (axs[1, 1], "accel", "Accel Time (s)")]
-
-for ax, key, title in plots:
-    y = res[key]
-    i = np.argmin(y)
-    ax.plot(RATIOS, y, linewidth=2)
-    ax.plot(RATIOS[i], y[i], "ro", label=f"best {RATIOS[i]:.2f}")
-    ax.axvline(baseline, color="k", linestyle="--", label=f"current {baseline:.2f}")
-    ax.ticklabel_format(axis="y", useOffset=False)
-    ax.set_title(title, fontweight="bold")
-    ax.set_xlabel("Gear Ratio (-)")
-    ax.grid(True)
-    ax.legend()
-plt.tight_layout()
-
-names = [label for label, _ in PARAMS]
-y = np.arange(len(PARAMS))
-for e in EVENTS:
-    order = np.argsort(np.abs(d_ratio[e][:, 1] - d_ratio[e][:, 0]))   # biggest ratio shift on top
-    fig, (a1, a2) = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
-    for ax, d, xlabel in [(a1, d_ratio[e], f"Change in best gear ratio from {ref_best[e][0]:.2f} (-)"),
-                          (a2, d_time[e], f"Change in best time from {ref_best[e][1]:.2f} s (s)")]:
-        ax.barh(y - 0.2, d[order, 0], height=0.4, label="-10 %")
-        ax.barh(y + 0.2, d[order, 1], height=0.4, label="+10 %")
-        ax.axvline(0, color="k")
-        ax.set_xlabel(xlabel)
-        ax.grid(True, axis="x")
+def plot_page(plots, best_is_min, suptitle, nrows, ncols, figsize):
+    fig, axs = plt.subplots(nrows, ncols, figsize=figsize)
+    for ax, (key, title) in zip(np.atleast_1d(axs).flat, plots):
+        y = res[key]
+        i = np.argmin(y) if best_is_min else np.argmax(y)
+        ax.plot(RATIOS, y, linewidth=2)
+        ax.plot(RATIOS[i], y[i], "ro", label=f"best {RATIOS[i]:.2f}")
+        ax.axvline(baseline, color="k", linestyle="--", label=f"current {baseline:.2f}")
+        ax.ticklabel_format(axis="y", useOffset=False)
+        ax.set_title(title, fontweight="bold")
+        ax.set_xlabel("Gear Ratio (-)")
+        ax.grid(True)
         ax.legend()
-    a1.set_yticks(y, [names[i] for i in order])
-    fig.suptitle(f"{e.capitalize()} Sensitivity", fontweight="bold")
+    fig.suptitle(suptitle, fontweight="bold")
     plt.tight_layout()
+
+# page 1: event times, best = lowest
+plot_page([("accel", "Accel Time (s)"),
+           ("autocross", "Autocross Time (s)"),
+           ("endurance", "Endurance Time (s)")],
+          best_is_min=True, suptitle=f"Event time vs gear ratio, autocross {AUTOCROSS_TRACK}, endurance {ENDURANCE_TRACK}",
+          nrows=1, ncols=3, figsize=(17, 5))
+
+# page 2: competition points, best = highest
+plot_page([("accel_pts", "Accel Points (-)"),
+           ("autocross_pts", "Autocross Points (-)"),
+           ("endurance_pts", "Endurance Points (-)"),
+           ("efficiency_pts", "Efficiency Points (-)")],
+          best_is_min=False, suptitle=f"Competition points vs gear ratio, autocross {AUTOCROSS_TRACK}, endurance {ENDURANCE_TRACK}",
+          nrows=2, ncols=2, figsize=(12, 8))
 
 plt.show()

@@ -21,7 +21,7 @@ TEST = [
     (24, 27, 0.554, 80.9),
     (27, 29, 0.455, 80.9),
 ]
-V_TOP_TEST = 29.0   # m/s, test hit the 19,000 rpm rev limit here
+V_TOP_TEST = 29.2   # m/s, test hit the 19,000 rpm rev limit here
 
 # car and tire with the correlated grip scales
 TIRE_DIR = LAPSIM_ROOT / "1. Data" / "Tire"

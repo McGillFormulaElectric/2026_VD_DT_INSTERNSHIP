@@ -13,10 +13,11 @@ sys.path.insert(0, str(LAPSIM_ROOT))
 from MotecData import MotecData
 
 G = 9.81             # m/s^2
-REF = 647.1          # motor rpm per m/s when free rolling, from BrakeCorrelation.py
+REF = 640.3          # motor rpm per m/s when free rolling, from Re = 0.1997 m (RollingRadius.py)
+R_X = -0.255         # m, IMU is 255 mm behind the CG (x forward)
 POWER_CAP = 80.0     # kW
 SPIN = 0.20          # -, slip above this = wheelspin
-AY_SKIDPAD = 1.35    # g, skidpad target
+AY_SKIDPAD = 1.366   # g, skidpad target
 AX_BRAKE = 0.93      # g, brake test target
 WHEELS = ["FL", "FR", "RL", "RR"]
 
@@ -25,6 +26,10 @@ data = MotecData(LAPSIM_ROOT / "1. Data" / "Motec" / "autocross.mat")
 time = data.getTime("velX")                                       # s
 velX = data.getValue("velX")                                      # m/s
 velY = data.getValue("velY")                                      # m/s
+accX = data.getValue("accX")                                      # m/s^2, IMU, mounted backwards
+accY = data.getValue("accY")                                      # m/s^2, IMU, mounted backwards
+pitch = np.radians(data.getValue("Pitch"))                        # rad, IMU frame, includes the 4.2 deg tilt
+roll = np.radians(data.getValue("Roll"))                          # rad, IMU frame
 yaw_rate = data.getValue("gyrZ_HR")                               # rad/s, + left
 throttle = data.getValue("THROTTLE_PERCENT")                      # %
 power = data.getValue("power")                                    # kW, pack
@@ -32,11 +37,22 @@ rpm = {w: data.getValue(f"SpeedActual{w}") for w in WHEELS}       # rpm, per mot
 torque = sum(data.getValue(f"TorqueActual{w}") for w in WHEELS)   # Nm, sum of 4 motors
 dt = np.mean(np.diff(time))                                       # s
 
-# ── derived channels (IMU accX/accY are mounted backwards, so use GPS and gyro) ──
-V = savgol_filter(np.sqrt(velX**2 + velY**2), 31, 2)     # m/s
+# ── derived channels ──────────────────────────────────────────
+V = savgol_filter(np.sqrt(velX**2 + velY**2), 31, 2)     # m/s, GPS
 dist = np.cumsum(V) * dt                                 # m
-ax = np.gradient(V, dt) / G                              # g, + accelerating
-ay = V * savgol_filter(yaw_rate, 31, 2) / G              # g, + left
+r = savgol_filter(yaw_rate, 31, 2)                       # rad/s
+r_dot = np.gradient(r, dt)                               # rad/s^2
+
+# IMU: sign flipped (mounted backwards), gravity from tilt and roll removed, moved to the CG
+ax = -(accX + G * np.sin(pitch))                         # m/s^2, + accelerating
+ay = -(accY - G * np.sin(roll))                          # m/s^2, + left
+ax = savgol_filter(ax + R_X * r**2, 31, 2) / G           # g, at the CG: a_x,CG = a_x,IMU + r_x * yaw rate^2
+ay = savgol_filter(ay - R_X * r_dot, 31, 2) / G          # g, at the CG: a_y,CG = a_y,IMU - r_x * yaw accel
+
+# speed based check (no IMU)
+ax_check = np.gradient(V, dt) / G                        # g, GPS d|v|/dt
+ay_check = V * r / G                                     # g, V x yaw rate
+
 slip = {w: rpm[w] / REF / V - 1 for w in WHEELS}         # -, + spinning, - locking
 spinning = np.any([slip[w] > SPIN for w in WHEELS], axis=0)
 
@@ -63,6 +79,9 @@ print(f"wheelspin: {np.mean(spinning) * 100:.1f} % of lap above {SPIN * 100:.0f}
 print(f"lateral:   {np.percentile(np.abs(ay), 99):.2f} g   (99th pct, skidpad {AY_SKIDPAD} g)")
 print(f"braking:   {-np.percentile(ax, 1):.2f} g   (99th pct, brake test {AX_BRAKE} g)")
 print(f"accel:     {np.percentile(ax, 99):.2f} g   (99th pct)")
+
+print(f"\nIMU vs speed check: ay {np.mean(np.abs(ay)):.3f} vs {np.mean(np.abs(ay_check)):.3f} g, "
+      f"ax rms diff {np.sqrt(np.mean((ax - ax_check)**2)):.3f} g")
 
 # right turns past the skidpad value at low speed, real grip or a spike
 right_hard = (ay < -AY_SKIDPAD) & (V * 3.6 < 45)
