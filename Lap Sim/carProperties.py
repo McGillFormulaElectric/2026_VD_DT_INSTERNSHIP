@@ -113,10 +113,10 @@ class MFE27:
     # ── Mass ──────────────────────────────────────────────────
     mass_battery:       float = 46.0  # kg  battery pack mass 
     mass_driver:        float = 70.0  # kg  driver mass
-    mass_aero:          float = 16.0  # kg  aerodynamic mass
+    mass_aero:          float = 18.0  # kg  aerodynamic mass
     mass_unsprung_f:    float = 32.0  # kg  unsprung mass (front)
     mass_unsprung_r:    float = 32.0  # kg  unsprung mass (rear)
-    mass_no_driver:     float = 185.0 # kg  total mass without driver
+    mass_no_driver:     float = 203.0 # kg  total mass without driver
     J_motor:            float = 0.00033 # kg m²  rotor inertia per motor, check the Fisher datasheet
     J_wheel:            float = 0.21955      # kg m²  wheel + tyre + hub per corner, estimate or measure
 
@@ -155,7 +155,7 @@ class MFE27:
     RC_height_sprung:        float = 0.1100   # m  sprung roll center height
     # ── Aero ──────────────────────────────────────────────────
     CLA:                float = 4.44    # downforce coefficient (positive = down)
-    CDA:                float = 1.85    # drag coefficient
+    CDA:                float = 1.5    # drag coefficient
     CS:                 float = 0.08    # sideforce coefficient
     ref_area:           float = 1.10    # m²  frontal reference area
     aero_balance:       float = 0.45    # fraction of downforce on front axle
@@ -192,7 +192,7 @@ class MFE27:
         self.curve_torque = np.squeeze(c["Tmotor"]).astype(float)    # (11,)   [Nm] 
 
     # ── Brakes ────────────────────────────────────────────────
-    max_decel:          float = 28.0    # m/s²  peak braking deceleration
+    max_decel:          float = 25.0    # m/s²  peak braking deceleration
     brake_bias_front:   float = 0.5    # fraction of brake force on front axle
     # ── Constants ─────────────────────────────────────────────
     air_density:        float = 1.225   # kg/m³

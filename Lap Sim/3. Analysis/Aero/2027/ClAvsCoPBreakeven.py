@@ -61,7 +61,6 @@ for ax, (name, run_event) in zip(axs, EVENTS.items()):
     # plot
     pc = ax.pcolormesh(BAL_LIST, CLA_LIST, T, shading="nearest", cmap="viridis", edgecolors="k", linewidth=0.5)
     fig.colorbar(pc, ax=ax)
-    ax.axvline(car_base.CGx, color="w", linestyle="--", linewidth=1)   # balance = static front weight
     ax.plot(car_base.aero_balance, car_base.CLA, "ro", ms=6)           # baseline car
     ax.set_xlabel("Aero balance (front fraction)")
     ax.set_ylabel("ClA (m^2)")
