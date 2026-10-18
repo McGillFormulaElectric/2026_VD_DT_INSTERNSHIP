@@ -1,0 +1,181 @@
+"""DRS sensitivities, one concept at a time. Everything in seconds and kWh, no points.
+
+Pick the concept with CONCEPT below. Four sweeps, each a separate figure + csv:
+  1. open-wing CdA  vs  lap time and endurance energy   (ClA, CoP, mass held at concept values)
+  2. open-wing ClA  vs  lap time and endurance energy   (CdA, CoP, mass held at concept values)
+  3. added mass     vs  lap time                        (breakeven: where the DRS gain is eaten by mass)
+  4. actuator latency vs lap time and energy            (open and close delay, same value)
+
+Folder: Lap Sim/3. Analysis/Aero/DRS CAPSTONE/Sensitivities/   (DRS_Physics.py one level up)
+Each sweep takes ~1-2 min. Comment sweeps out in RUN at the bottom to skip them.
+"""
+import sys, csv
+from pathlib import Path
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")           # swap for "TkAgg" + plt.show() if you want windows
+import matplotlib.pyplot as plt
+
+HERE = Path(__file__).resolve().parent
+LAPSIM_ROOT = HERE.parents[3]                       # Sensitivities -> DRS CAPSTONE -> Aero -> 3. Analysis -> Lap Sim
+sys.path.insert(0, str(LAPSIM_ROOT))
+sys.path.insert(0, str(HERE.parent))                # DRS_Physics.py lives in DRS CAPSTONE
+
+from TrackMap import loadTrack
+from CarProperties import MFE26
+from Tire import Tire
+import DRS_Physics as DRS
+
+# ── concepts: closed is the same for all, open comes from the CFD tab ─────
+CLOSED = dict(CLA=4.43, CDA=1.92, bal=0.41)
+CONCEPTS = {
+    "C1": dict(name="Dual Rear Flap DRS",             CLA=3.23, CDA=1.14, bal=0.65, mass=0.15),
+    "C2": dict(name="All Rear Flaps DRS",             CLA=None, CDA=None, bal=None, mass=0.175),   # fill from CFD
+    "C3": dict(name="All Rear + Front Flaps DRS",     CLA=None, CDA=None, bal=None, mass=0.375),
+}
+CONCEPT = "C1"                 # <-- change this
+
+# ── sweep ranges ──────────────────────────────────────────────────────────
+CDA_OPEN_LIST  = [1.92, 1.70, 1.50, 1.30, 1.14, 1.00, 0.80, 0.60]
+CLA_OPEN_LIST  = [4.43, 4.00, 3.60, 3.23, 2.80, 2.40, 2.00, 1.50, 1.00]
+MASS_LIST      = [0.0, 0.5, 1.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 15.0]
+LATENCY_LIST   = [0.0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0]
+LAT_MARGIN = 0.95
+N_LAPS = 22
+
+# ── setup ─────────────────────────────────────────────────────────────────
+TIRE_DIR = LAPSIM_ROOT / "1. Data" / "Tire"
+TRACK_DIR = LAPSIM_ROOT / "1. Data" / "Track"
+tire = Tire(TIRE_DIR / "MF61_Parameters.mat", TIRE_DIR / "FZ_Reference.mat")
+base = MFE26()
+track_ax = loadTrack(TRACK_DIR, "Michigan2026_Autocross")
+track_en = loadTrack(TRACK_DIR, "Michigan2026_Endurance")
+cfg = CONCEPTS[CONCEPT]
+OUT = HERE / CONCEPT
+OUT.mkdir(exist_ok=True)
+
+C = {"line": "#2a78d6", "ref": "#eb6834", "grey": "#898781", "energy": "#1baf7a"}
+plt.rcParams.update({"font.size": 9, "axes.spines.top": False, "axes.spines.right": False,
+                     "axes.edgecolor": "#c3c2b7", "axes.labelcolor": "#52514e", "xtick.color": "#898781",
+                     "ytick.color": "#898781", "grid.color": "#e1e0d9", "axes.grid": True, "axes.axisbelow": True})
+
+
+def run(CLA_o, CDA_o, bal_o, mass, t_act=0.0, mode="controller"):
+    """All events for one open-wing definition. Returns times [s] and energy [kWh]."""
+    cc, co = DRS.make_states(base, CLOSED["CLA"], CLOSED["CDA"], CLOSED["bal"], CLA_o, CDA_o, bal_o, mass)
+    acc = DRS.solve_accel(tire, cc, co, mode=mode, t_act=t_act)
+    ax = DRS.solve_track_event(tire, cc, co, track_ax, True, mode, t_act, LAT_MARGIN)
+    en = DRS.solve_track_event(tire, cc, co, track_en, False, mode, t_act, LAT_MARGIN)
+    return dict(t_acc=acc["lap_time"], t_ax=ax["lap_time"], t_en_lap=en["lap_time"],
+                t_en=en["lap_time"] * N_LAPS, E_en=en["energy_J"] * N_LAPS / 3.6e6,
+                open_en=en["open_fraction"])
+
+
+def baseline():
+    """No DRS, no added mass."""
+    return run(CLOSED["CLA"], CLOSED["CDA"], CLOSED["bal"], 0.0, mode="closed")
+
+
+def save_csv(name, xlabel, xs, rows, b0):
+    with open(OUT / f"{name}.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([xlabel, "t_acc", "t_ax", "t_en_lap", "t_en_22", "E_en_kWh", "open_en",
+                    "d_acc", "d_ax", "d_en_22", "dE_kWh"])
+        for x, r in zip(xs, rows):
+            w.writerow([x, r["t_acc"], r["t_ax"], r["t_en_lap"], r["t_en"], r["E_en"], r["open_en"],
+                        r["t_acc"] - b0["t_acc"], r["t_ax"] - b0["t_ax"], r["t_en"] - b0["t_en"], r["E_en"] - b0["E_en"]])
+
+
+def plot_time_energy(name, xlabel, xs, rows, b0, x_ref=None, title=""):
+    """Two panels: event time deltas vs x, endurance energy vs x."""
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(11, 4))
+    a1.plot(xs, [r["t_acc"] - b0["t_acc"] for r in rows], "o-", color="#6250d6", lw=2, ms=5, label="accel")
+    a1.plot(xs, [r["t_ax"] - b0["t_ax"] for r in rows], "o-", color=C["ref"], lw=2, ms=5, label="autocross")
+    a1.plot(xs, [r["t_en"] - b0["t_en"] for r in rows], "o-", color=C["line"], lw=2, ms=5, label="endurance (22 laps)")
+    a1.axhline(0, color="#c3c2b7", lw=1)
+    a1.set_xlabel(xlabel); a1.set_ylabel("time vs no-DRS baseline [s]   (negative = faster)")
+    a1.legend(frameon=False); a1.set_title(f"{title}: event time", loc="left", fontweight="bold")
+    a2.plot(xs, [r["E_en"] for r in rows], "o-", color=C["energy"], lw=2, ms=5, label=f"{CONCEPT} with DRS")
+    a2.axhline(b0["E_en"], color=C["grey"], lw=1.5, ls="--", label=f"no DRS  ({b0['E_en']:.2f} kWh)")
+    a2.set_xlabel(xlabel); a2.set_ylabel("endurance energy, 22 laps [kWh]")
+    a2.legend(frameon=False); a2.set_title("energy", loc="left", fontweight="bold")
+    if x_ref is not None:
+        for a in (a1, a2):
+            a.axvline(x_ref, color=C["grey"], lw=1, ls=":")
+            a.text(x_ref, a.get_ylim()[1], f" {CONCEPT} CFD", color=C["grey"], va="top", fontsize=8)
+    fig.tight_layout(); fig.savefig(OUT / f"{name}.png", dpi=160); plt.close(fig)
+
+
+# ── 1. open CdA ───────────────────────────────────────────────────────────
+def sweep_cda(b0):
+    print("sweep open CdA ...")
+    rows = [run(cfg["CLA"], cda, cfg["bal"], cfg["mass"]) for cda in CDA_OPEN_LIST]
+    xs = [CLOSED["CDA"] - c for c in CDA_OPEN_LIST]           # delta, positive = less drag open
+    save_csv("cda_open", "dCdA_open", xs, rows, b0)
+    plot_time_energy("cda_open", "open-wing CdA reduction vs closed  [m²]", xs, rows, b0,
+                     x_ref=CLOSED["CDA"] - cfg["CDA"], title=f"{CONCEPT} open CdA")
+    for x, r in zip(xs, rows):
+        print(f"  dCdA {x:5.2f}  en 22-lap {r['t_en']-b0['t_en']:+7.2f} s   E {r['E_en']:.3f} kWh")
+
+
+# ── 2. open ClA ───────────────────────────────────────────────────────────
+def sweep_cla(b0):
+    print("sweep open ClA ...")
+    rows = [run(cla, cfg["CDA"], cfg["bal"], cfg["mass"]) for cla in CLA_OPEN_LIST]
+    xs = [CLOSED["CLA"] - c for c in CLA_OPEN_LIST]           # delta, positive = less downforce open
+    save_csv("cla_open", "dClA_open", xs, rows, b0)
+    plot_time_energy("cla_open", "open-wing ClA reduction vs closed  [m²]", xs, rows, b0,
+                     x_ref=CLOSED["CLA"] - cfg["CLA"], title=f"{CONCEPT} open ClA")
+    for x, r in zip(xs, rows):
+        print(f"  dClA {x:5.2f}  en 22-lap {r['t_en']-b0['t_en']:+7.2f} s   E {r['E_en']:.3f} kWh   open {r['open_en']*100:.0f}%")
+
+
+# ── 3. mass breakeven ─────────────────────────────────────────────────────
+def sweep_mass(b0):
+    print("sweep mass ...")
+    rows = [run(cfg["CLA"], cfg["CDA"], cfg["bal"], m) for m in MASS_LIST]
+    save_csv("mass", "added_mass_kg", MASS_LIST, rows, b0)
+    fig, ax = plt.subplots(1, 3, figsize=(13, 3.8))
+    for a, key, lab in zip(ax, ("t_acc", "t_ax", "t_en"), ("accel", "autocross", "endurance (22 laps)")):
+        d = [r[key] - b0[key] for r in rows]
+        a.plot(MASS_LIST, d, "o-", color=C["line"], lw=2, ms=5)
+        a.axhline(0, color=C["ref"], lw=1.5, ls="--", label="no-DRS baseline")
+        a.axvline(cfg["mass"], color=C["grey"], lw=1, ls=":")
+        # breakeven: first crossing of zero
+        d = np.array(d)
+        if (d < 0).any() and (d > 0).any():
+            i = np.where(np.diff(np.sign(d)))[0][0]
+            m_be = MASS_LIST[i] + (0 - d[i]) * (MASS_LIST[i + 1] - MASS_LIST[i]) / (d[i + 1] - d[i])
+            a.plot(m_be, 0, "o", color=C["ref"], ms=8, zorder=5)
+            a.text(m_be, 0, f"  breakeven {m_be:.1f} kg", color=C["ref"], va="bottom", fontsize=8)
+        a.set_xlabel("DRS system added mass [kg]"); a.set_ylabel("time vs no-DRS baseline [s]")
+        a.set_title(lab, loc="left", fontweight="bold")
+    ax[0].legend(frameon=False)
+    fig.suptitle(f"{CONCEPT} {cfg['name']}: mass breakeven  (dotted = concept estimate {cfg['mass']} kg)", x=0.01, ha="left", fontweight="bold")
+    fig.tight_layout(); fig.savefig(OUT / "mass.png", dpi=160); plt.close(fig)
+    for m, r in zip(MASS_LIST, rows):
+        print(f"  {m:5.1f} kg  acc {r['t_acc']-b0['t_acc']:+.3f}  ax {r['t_ax']-b0['t_ax']:+.3f}  en {r['t_en']-b0['t_en']:+.2f} s")
+
+
+# ── 4. latency ────────────────────────────────────────────────────────────
+def sweep_latency(b0):
+    print("sweep latency ...")
+    rows = [run(cfg["CLA"], cfg["CDA"], cfg["bal"], cfg["mass"], t_act=t) for t in LATENCY_LIST]
+    save_csv("latency", "latency_s", LATENCY_LIST, rows, b0)
+    plot_time_energy("latency", "actuator latency, open and close  [s]", LATENCY_LIST, rows, b0,
+                     title=f"{CONCEPT} latency")
+    for t, r in zip(LATENCY_LIST, rows):
+        print(f"  {t:4.2f} s  en 22-lap {r['t_en']-b0['t_en']:+7.2f} s   E {r['E_en']:.3f} kWh   open {r['open_en']*100:.0f}%")
+
+
+# ── run ───────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    if cfg["CDA"] is None:
+        raise SystemExit(f"{CONCEPT} has no open-wing CFD values yet, fill CONCEPTS[{CONCEPT!r}]")
+    print(f"{CONCEPT} {cfg['name']}  open CLA {cfg['CLA']} CDA {cfg['CDA']} CoP {cfg['bal']}  +{cfg['mass']} kg")
+    b0 = baseline()
+    print(f"baseline  acc {b0['t_acc']:.3f}  ax {b0['t_ax']:.3f}  en {b0['t_en_lap']:.3f} s/lap  E {b0['E_en']:.3f} kWh")
+    RUN = [sweep_cda, sweep_cla, sweep_mass, sweep_latency]     # comment out to skip
+    for s in RUN:
+        s(b0)
+    print("done ->", OUT)
