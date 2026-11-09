@@ -1,0 +1,18 @@
+Energy sink,MFE26 (DRS baseline aero) kWh/lap,MFE26 (DRS baseline aero) kWh/event (22 laps),MFE26 (DRS baseline aero) share %
+Aero drag,0.1561,3.435,39.58
+Rolling resistance,0.0258,0.568,6.54
+Tyre cornering drag,0.0701,1.542,17.77
+Friction brakes,0.0326,0.716,8.25
+Motor losses (drive),0.0552,1.215,14.00
+Inverter losses (drive),0.0097,0.214,2.46
+Unmodelled losses (efficiency_scale),0.0238,0.524,6.04
+Regen conversion losses,0.0212,0.466,5.37
+Kinetic energy residual,0.0000,0.000,0.00
+Net pack energy (sum),0.3945,8.679,100
+
+Info,MFE26 (DRS baseline aero),,
+Pack draw while driving kWh/lap,0.4859,,
+Regen recovered kWh/lap,0.0914,,
+Shaft work delivered kWh/lap,0.3971,,
+Flying lap time s,52.594,,
+Track,Michigan2026_Endurance,,
